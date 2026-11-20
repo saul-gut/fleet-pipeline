@@ -1,0 +1,27 @@
+# Secretos y configuración local
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+
+# Herramientas
+.pytest_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# Datos crudos y pesados (se regeneran con scripts/)
+data/raw/
+
+# Documentos de la empresa (no se publican)
+docs/*.pdf
+
+# Editor y sistema operativo
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store
