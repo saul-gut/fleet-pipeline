@@ -41,6 +41,9 @@ CREATE TABLE IF NOT EXISTS bronze.telemetry_raw_default
 
 -- Crea las particiones diarias faltantes entre dos fechas (ambas incluidas). Idempotente.
 -- Devuelve cuántas particiones creó.
+-- Los cortes siguen el día de negocio de Colombia (D-10): cada partición va de medianoche a
+-- medianoche en America/Bogota, sin importar la zona horaria de la sesión. Colombia no tiene
+-- horario de verano, así que todos los días duran 24 h.
 CREATE OR REPLACE FUNCTION bronze.ensure_partitions(p_from date, p_to date)
 RETURNS integer
 LANGUAGE plpgsql
@@ -61,7 +64,9 @@ BEGIN
             EXECUTE format(
                 'CREATE TABLE bronze.%I PARTITION OF bronze.telemetry_raw
                  FOR VALUES FROM (%L) TO (%L)',
-                v_name, v_day::timestamptz, (v_day + 1)::timestamptz
+                v_name,
+                v_day::timestamp AT TIME ZONE 'America/Bogota',
+                (v_day + 1)::timestamp AT TIME ZONE 'America/Bogota'
             );
             v_created := v_created + 1;
         END IF;
@@ -72,7 +77,11 @@ END;
 $$;
 
 -- Ventana inicial: los 7 días que acepta la validación (D-09) más 2 días hacia adelante.
-SELECT bronze.ensure_partitions(current_date - 7, current_date + 2);
+-- Se usa la fecha de Colombia, no current_date, que depende de la zona horaria de la sesión.
+SELECT bronze.ensure_partitions(
+    (now() AT TIME ZONE 'America/Bogota')::date - 7,
+    (now() AT TIME ZONE 'America/Bogota')::date + 2
+);
 
 -- Paquetes rechazados con su motivo (D-09). El payload se guarda tal cual llegó (jsonb),
 -- porque un paquete inválido puede no encajar en los tipos de telemetry_raw.
