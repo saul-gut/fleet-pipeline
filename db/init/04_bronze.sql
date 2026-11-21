@@ -42,41 +42,17 @@ CREATE INDEX IF NOT EXISTS telemetry_raw_ts_brin
 CREATE TABLE IF NOT EXISTS bronze.telemetry_raw_default
     PARTITION OF bronze.telemetry_raw DEFAULT;
 
--- Crea las particiones diarias faltantes entre dos fechas (ambas incluidas). Idempotente.
--- Devuelve cuántas particiones creó.
--- Los cortes siguen el día de negocio de Colombia (D-10): cada partición va de medianoche a
--- medianoche en America/Bogota, sin importar la zona horaria de la sesión. Colombia no tiene
--- horario de verano, así que todos los días duran 24 h.
+-- received_at no es la clave de partición, pero el procesamiento incremental de Plata
+-- filtra por ella (marca de agua). Un BRIN pesa KB y evita leer las particiones completas.
+CREATE INDEX IF NOT EXISTS telemetry_raw_received_at_brin
+    ON bronze.telemetry_raw USING brin (received_at);
+
+-- Atajo para Bronce de la función genérica de 03_schemas.sql.
 CREATE OR REPLACE FUNCTION bronze.ensure_partitions(p_from date, p_to date)
 RETURNS integer
-LANGUAGE plpgsql
+LANGUAGE sql
 AS $$
-DECLARE
-    v_day     date;
-    v_name    text;
-    v_created integer := 0;
-BEGIN
-    IF p_from > p_to THEN
-        RAISE EXCEPTION 'p_from (%) no puede ser posterior a p_to (%)', p_from, p_to;
-    END IF;
-
-    FOR v_day IN SELECT generate_series(p_from, p_to, interval '1 day')::date LOOP
-        v_name := format('telemetry_raw_%s', to_char(v_day, 'YYYYMMDD'));
-        IF to_regclass(format('bronze.%I', v_name)) IS NULL THEN
-            -- %I y %L escapan identificadores y literales: no hay SQL concatenado a mano.
-            EXECUTE format(
-                'CREATE TABLE bronze.%I PARTITION OF bronze.telemetry_raw
-                 FOR VALUES FROM (%L) TO (%L)',
-                v_name,
-                v_day::timestamp AT TIME ZONE 'America/Bogota',
-                (v_day + 1)::timestamp AT TIME ZONE 'America/Bogota'
-            );
-            v_created := v_created + 1;
-        END IF;
-    END LOOP;
-
-    RETURN v_created;
-END;
+    SELECT public.ensure_daily_partitions('bronze.telemetry_raw', p_from, p_to);
 $$;
 
 -- Ventana inicial: los 7 días que acepta la validación (D-09) más 2 días hacia adelante.

@@ -17,6 +17,7 @@ from datetime import UTC, datetime, timedelta
 import psycopg
 
 from fleet_pipeline.config import get_settings
+from fleet_pipeline.simulator.catalog import register_fleet, register_routes
 from fleet_pipeline.simulator.fleet import build_fleet
 from fleet_pipeline.simulator.routes import load_routes
 from fleet_pipeline.simulator.runner import ApiSender, FleetSimulation, run_backfill, run_live
@@ -29,26 +30,14 @@ MAX_BACKFILL_HOURS = 7 * 24  # la validación rechaza datos de más de 7 días (
 
 
 def register(seed: int) -> None:
-    """Da de alta la flota en el catálogo. Es una operación administrativa, no telemetría."""
-    fleet = build_fleet(load_routes(), seed)
+    """Da de alta rutas, vehículos y asignaciones. Es configuración, no telemetría."""
+    routes = load_routes()
+    fleet = build_fleet(routes, seed)
     with psycopg.connect(get_settings().conninfo) as conn:
-        for spec in fleet:
-            conn.execute(
-                """
-                INSERT INTO bronze.vehicles
-                    (vehicle_id, vehicle_type, tank_capacity_l, ref_consumption_l_100km)
-                VALUES (%s, %s, %s, %s)
-                ON CONFLICT (vehicle_id) DO NOTHING
-                """,
-                (
-                    spec.vehicle_id,
-                    spec.model.vehicle_type,
-                    spec.model.tank_capacity_l,
-                    spec.model.consumption_l_100km,
-                ),
-            )
-    # El log muestra solo conteos y rutas: el catálogo con IDs reales queda en la base.
-    log.info("Flota registrada: %d vehículos", len(fleet))
+        register_routes(conn, routes)
+        register_fleet(conn, fleet)
+    # El log muestra solo conteos: el catálogo con IDs reales queda en la base.
+    log.info("Registradas %d rutas y %d vehículos", len(routes), len(fleet))
 
 
 def run(args: argparse.Namespace) -> None:

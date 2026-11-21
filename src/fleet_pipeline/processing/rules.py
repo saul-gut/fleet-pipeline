@@ -30,6 +30,9 @@ class RuleParams:
     min_step_m: float = 15.0
     refuel_jump_pct: float = 5.0
     fuel_safety_factor: float = 1.15
+    # Severidad de la alerta de combustible según qué fracción de lo necesario hay en el tanque.
+    low_fuel_severe_coverage: float = 0.5
+    low_fuel_moderate_coverage: float = 0.8
 
 
 class Severity(StrEnum):
@@ -165,3 +168,15 @@ def fuel_needed_l(
 
 def is_low_fuel(fuel_l: float, needed_l: float) -> bool:
     return fuel_l < needed_l
+
+
+def low_fuel_severity(
+    fuel_l: float, needed_l: float, params: RuleParams = RuleParams()
+) -> Severity:
+    """Menos de la mitad de lo necesario = grave; menos del 80 % = moderada; si no, leve."""
+    coverage = fuel_l / needed_l
+    if coverage < params.low_fuel_severe_coverage:
+        return Severity.SEVERE
+    if coverage < params.low_fuel_moderate_coverage:
+        return Severity.MODERATE
+    return Severity.MINOR

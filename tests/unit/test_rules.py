@@ -18,6 +18,7 @@ from fleet_pipeline.processing.rules import (
     is_low_fuel,
     is_over_threshold,
     is_refuel,
+    low_fuel_severity,
     remaining_route_km,
     severity,
     speeding_episodes,
@@ -165,6 +166,18 @@ def test_low_fuel_alert_for_truck_starting_with_30_percent() -> None:
     needed = fuel_needed_l(remaining_km=450, consumption_l_km=0.35)
     assert needed == pytest.approx(181.125)  # 450 × 0,35 × 1,15
     assert is_low_fuel(120.0, needed)
+
+
+@pytest.mark.parametrize(
+    ("fuel_l", "needed_l", "expected"),
+    [
+        (60.0, 181.1, Severity.SEVERE),  # 33 % de lo necesario
+        (119.4, 181.1, Severity.MODERATE),  # 66 %: el camión que sale con 30 %
+        (170.0, 181.1, Severity.MINOR),  # 94 %
+    ],
+)
+def test_low_fuel_severity_by_coverage(fuel_l: float, needed_l: float, expected: Severity) -> None:
+    assert low_fuel_severity(fuel_l, needed_l) == expected
 
 
 def test_enough_fuel_does_not_alert() -> None:

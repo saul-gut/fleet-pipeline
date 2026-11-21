@@ -35,6 +35,9 @@ def conninfo(settings: Settings) -> str:
 
 def _delete_test_data(conn: psycopg.Connection) -> None:
     ids = list(TEST_VEHICLES)
+    conn.execute("DELETE FROM silver.alerts WHERE vehicle_id = ANY(%s)", (ids,))
+    conn.execute("DELETE FROM silver.telemetry_enriched WHERE vehicle_id = ANY(%s)", (ids,))
+    conn.execute("DELETE FROM silver.vehicle_routes WHERE vehicle_id = ANY(%s)", (ids,))
     conn.execute("DELETE FROM bronze.telemetry_raw WHERE vehicle_id = ANY(%s)", (ids,))
     conn.execute("DELETE FROM bronze.telemetry_rejected WHERE vehicle_id = ANY(%s)", (ids,))
     conn.execute("DELETE FROM bronze.vehicles WHERE vehicle_id = ANY(%s)", (ids,))
