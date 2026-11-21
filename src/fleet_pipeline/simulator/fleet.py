@@ -18,14 +18,17 @@ class DriverProfile:
     burst_probability: float  # probabilidad por paso de un exceso momentáneo
     burst_factor: float
     fuel_penalty: float  # consumo extra por conducción brusca
+    # Cuánto respeta el límite de la geocerca donde va (D-18): límite + margen.
+    # None = lo ignora (solo lo frenan sus propios topes).
+    zone_margin_kmh: float | None
 
 
 # Las velocidades de OSRM son de flujo libre, no de tráfico real: por eso cada perfil tiene
 # un tope. Así los excesos dependen del conductor y no de la estimación de OSRM.
 PROFILES: dict[str, DriverProfile] = {
-    "prudent": DriverProfile("prudent", 0.85, 48, 88, 0.00, 1.00, 0.00),
-    "normal": DriverProfile("normal", 0.95, 56, 95, 0.02, 1.15, 0.05),
-    "aggressive": DriverProfile("aggressive", 1.10, 75, 115, 0.05, 1.30, 0.15),
+    "prudent": DriverProfile("prudent", 0.85, 48, 88, 0.00, 1.00, 0.00, -2),
+    "normal": DriverProfile("normal", 0.95, 56, 95, 0.02, 1.15, 0.05, 8),
+    "aggressive": DriverProfile("aggressive", 1.10, 75, 115, 0.05, 1.30, 0.15, None),
 }
 
 

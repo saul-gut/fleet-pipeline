@@ -31,6 +31,7 @@ from fleet_pipeline.simulator.fleet import (
 )
 from fleet_pipeline.simulator.routes import Route, build_route, load_routes
 from fleet_pipeline.simulator.runner import FleetSimulation
+from fleet_pipeline.simulator.zones import ZoneIndex, with_zone_limits
 
 Routes = dict[str, Route]
 
@@ -134,6 +135,44 @@ def run_steps(vehicle: VehicleSpec, route: Route, steps: int, seed: int = 1) -> 
         state = step(vehicle, state, route, 10, rng)
         states.append(state)
     return states
+
+
+# --- Zonas (D-18) ----------------------------------------------------------------------
+
+SCHOOL_ROUTE = replace(HIGHWAY, segment_zone_limits=(30, 30))
+
+
+def test_prudent_driver_respects_school_zone() -> None:
+    speeds = [s.speed_kmh for s in run_steps(spec("prudent"), SCHOOL_ROUTE, 200)]
+    assert max(speeds) <= 30 - 2
+
+
+def test_normal_driver_exceeds_zone_only_slightly() -> None:
+    speeds = [s.speed_kmh for s in run_steps(spec("normal"), SCHOOL_ROUTE, 200)]
+    assert 30 < max(speeds) <= 30 + 8
+
+
+def test_aggressive_driver_ignores_the_zone() -> None:
+    speeds = [s.speed_kmh for s in run_steps(spec("aggressive"), SCHOOL_ROUTE, 200)]
+    assert max(speeds) > 60
+
+
+@pytest.fixture(scope="module")
+def zone_index() -> ZoneIndex:
+    return ZoneIndex()
+
+
+def test_zone_index_applies_most_restrictive_geofence(zone_index: ZoneIndex) -> None:
+    assert zone_index.limit_at(4.7050, -74.0420) == 50  # Usaquén: solo perímetro urbano
+    assert zone_index.limit_at(40.4168, -3.7038) is None  # Madrid: ninguna geocerca
+
+
+def test_route_segments_get_zone_limits(zone_index: ZoneIndex, real_routes: Routes) -> None:
+    route = with_zone_limits(real_routes["BOG-01"], zone_index)
+    assert route.segment_zone_limits is not None
+    assert len(route.segment_zone_limits) == len(route.coords) - 1
+    # BOG-01 pasa por la zona escolar BOG-SCH-01 y el hotspot BOG-HR-03 (D-16).
+    assert {30, 40, 50} <= set(route.segment_zone_limits)
 
 
 def test_prudent_driver_never_exceeds_urban_cap() -> None:

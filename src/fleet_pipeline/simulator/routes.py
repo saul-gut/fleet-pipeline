@@ -18,6 +18,7 @@ class RoutePoint:
     lat: float
     lon: float
     road_speed_kmh: float  # velocidad típica de la vía según OSRM (flujo libre)
+    zone_limit_kmh: int | None = None  # límite de la geocerca más restrictiva (si se conoce)
 
 
 @dataclass(frozen=True)
@@ -28,6 +29,8 @@ class Route:
     coords: tuple[tuple[float, float], ...]  # (lat, lon)
     segment_speeds_kmh: tuple[float, ...]
     cumulative_m: tuple[float, ...]  # distancia acumulada en cada vértice; empieza en 0
+    # Límite legal o de política por segmento; lo agrega simulator.zones (None = sin calcular).
+    segment_zone_limits: tuple[int | None, ...] | None = None
 
     @property
     def length_m(self) -> float:
@@ -48,6 +51,7 @@ class Route:
             lat=lat1 + (lat2 - lat1) * fraction,
             lon=lon1 + (lon2 - lon1) * fraction,
             road_speed_kmh=self.segment_speeds_kmh[segment],
+            zone_limit_kmh=self.segment_zone_limits[segment] if self.segment_zone_limits else None,
         )
 
 

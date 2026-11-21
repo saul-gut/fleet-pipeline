@@ -14,7 +14,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from fleet_pipeline.simulator.fleet import VehicleSpec
-from fleet_pipeline.simulator.routes import Route
+from fleet_pipeline.simulator.routes import Route, RoutePoint
 
 BOGOTA_TZ = ZoneInfo("America/Bogota")
 OPERATING_START = time(5, 0)  # los vehículos operan de 5:00 a 21:00 hora de Colombia;
@@ -59,15 +59,16 @@ def is_operating(ts: datetime) -> bool:
     return OPERATING_START <= local < OPERATING_END
 
 
-def target_speed(
-    spec: VehicleSpec, route: Route, road_speed_kmh: float, rng: random.Random
-) -> float:
+def target_speed(spec: VehicleSpec, route: Route, point: RoutePoint, rng: random.Random) -> float:
     """Velocidad a la que el conductor quiere ir en este punto."""
     profile = spec.profile
     cap = profile.urban_cap_kmh if route.is_urban else profile.highway_cap_kmh
-    speed = min(road_speed_kmh * profile.speed_factor, cap)
+    speed = min(point.road_speed_kmh * profile.speed_factor, cap)
     if rng.random() < profile.burst_probability:
         speed *= profile.burst_factor
+    # El conductor ajusta su velocidad al límite de la zona según su perfil (D-18).
+    if profile.zone_margin_kmh is not None and point.zone_limit_kmh is not None:
+        speed = min(speed, point.zone_limit_kmh + profile.zone_margin_kmh)
     return speed
 
 
@@ -88,7 +89,7 @@ def step(
             dt_s,
         )
 
-    desired = target_speed(spec, route, route.point_at(state.distance_m).road_speed_kmh, rng)
+    desired = target_speed(spec, route, route.point_at(state.distance_m), rng)
     change = max(
         -MAX_DECEL_KMH_PER_S * dt_s, min(MAX_ACCEL_KMH_PER_S * dt_s, desired - state.speed_kmh)
     )

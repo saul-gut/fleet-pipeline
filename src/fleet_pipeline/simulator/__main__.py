@@ -21,6 +21,7 @@ from fleet_pipeline.simulator.catalog import register_fleet, register_routes
 from fleet_pipeline.simulator.fleet import build_fleet
 from fleet_pipeline.simulator.routes import load_routes
 from fleet_pipeline.simulator.runner import ApiSender, FleetSimulation, run_backfill, run_live
+from fleet_pipeline.simulator.zones import load_routes_with_zones
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logging.getLogger("httpx").setLevel(logging.WARNING)
@@ -44,7 +45,8 @@ def run(args: argparse.Namespace) -> None:
     if not 0 <= args.backfill_hours <= MAX_BACKFILL_HOURS:
         raise SystemExit(f"--backfill-hours debe estar entre 0 y {MAX_BACKFILL_HOURS}")
 
-    routes = load_routes()
+    # Los conductores conocen el límite de cada tramo según las geocercas (D-18).
+    routes = load_routes_with_zones(load_routes())
     sim = FleetSimulation(build_fleet(routes, args.seed), routes, random.Random(args.seed))
     settings = get_settings()
     sender = ApiSender(args.api_url, settings.api_key_device.get_secret_value())
