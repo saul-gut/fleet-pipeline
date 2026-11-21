@@ -1,7 +1,8 @@
-"""Dashboard "Centro de control de flota" (D-20, D-21, D-23, D-23).
+"""Dashboard "Centro de control de flota" (D-20, D-21, D-23, D-26).
 
 Ejecutar: uv run python tasks.py dashboard   (o: uv run streamlit run dashboard/app.py)
-Lee solo la capa Oro y las geocercas, asumiendo en PostgreSQL el rol elegido.
+Lee solo la capa Oro y las geocercas: en local, de PostGIS asumiendo el rol elegido; en la
+demo pública, de una foto de Oro consultada con DuckDB (ver data.select_source).
 
 Todo el tablero (KPIs, mapa, ranking y alertas) responde al mismo alcance: periodo, ciudades,
 vehículo, tipos de infracción y severidad. Los filtros se aplican juntos con un botón, para no
@@ -10,12 +11,22 @@ recargar la página en cada clic; las capas del mapa se encienden dentro del map
 
 from __future__ import annotations
 
+import sys
+from pathlib import Path
+
+# Si el hosting instala solo las dependencias y no el paquete del proyecto (p. ej. Streamlit
+# Community Cloud), el código de src/ se importa directo del repositorio. Se agrega al final
+# de la ruta: en local gana el paquete instalado.
+_SRC = Path(__file__).resolve().parents[1] / "src"
+if str(_SRC) not in sys.path:
+    sys.path.append(str(_SRC))
+
 import streamlit as st
 import theme
 import tour
 import ui
 
-from data import DataSource, PostgresSource
+from data import DataSource, select_source
 from fleet_pipeline.queries.dashboard import AlertFilter, QueryResult, Scope
 from fleet_pipeline.security.auth import Role
 
@@ -25,9 +36,11 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded",
 )
+source: DataSource = select_source()
+
 ui.render(theme.CSS)
 # Aviso "Cargando datos…": visible solo mientras Streamlit vuelve a ejecutar la página.
-ui.render(ui.loading_overlay())
+ui.render(ui.loading_overlay(source.engine))
 
 ALL_VEHICLES = "Todos los vehículos"
 CITIES = {"Bogotá": "bogota", "Medellín": "medellin", "Corredor Bogotá–Medellín": "corridor"}
@@ -46,8 +59,6 @@ INFRACTION_GROUPS = {
 SEVERITIES = {"🟡 Leve": "minor", "🟠 Moderada": "moderate", "🔴 Grave": "severe"}
 # Con la flota completa se dibuja una lectura de cada 6 (~1 minuto): suficiente para el mapa.
 FLEET_SAMPLE_EVERY = 6
-
-source: DataSource = PostgresSource()
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
@@ -78,8 +89,11 @@ with st.sidebar:
             or "Analista"
         )
         st.caption(
-            "El rol se aplica en PostgreSQL (`SET ROLE`): el analista solo puede leer datos "
-            "enmascarados."
+            "En la demo pública, la consulta del analista nunca lee los IDs reales. En local, "
+            "el rol lo aplica PostgreSQL (`SET ROLE`)."
+            if source.is_snapshot
+            else "El rol se aplica en PostgreSQL (`SET ROLE`): el analista solo puede leer "
+            "datos enmascarados."
         )
     role = Role.ADMIN if role_label == "Administrador" else Role.ANALYST
 
@@ -181,7 +195,15 @@ fuel = source.fuel_alerts(role, scope, severities if show_fuel else [])
 geofences = cached_geofences()
 
 # --- Página ----------------------------------------------------------------------------
-ui.render(ui.hero(role_label, role is Role.ANALYST, bounds["last"].strftime("%d/%m/%Y")))
+ui.render(
+    ui.hero(
+        role_label,
+        role is Role.ANALYST,
+        bounds["last"].strftime("%d/%m/%Y"),
+        source.engine,
+        source.is_snapshot,
+    )
+)
 with st.container(key="tour-kpis"):
     ui.render(ui.kpi_cards(kpis.rows[0]))
 
@@ -231,7 +253,8 @@ with st.container(key="tour-timings"):
                 "recorridos": routes.ms,
                 "heatmap": infractions.ms,
                 "alertas": alerts.ms + fuel.ms,
-            }
+            },
+            source.engine,
         )
     )
 
@@ -240,4 +263,7 @@ with st.container(key="tour-timings"):
 force = st.session_state.pop("tour_force", False)
 if force or st.query_params.get("tour") != "0":
     with st.container(key="tour-runner"):
-        st.iframe(tour.tour_html(force, st.session_state.get("tour_nonce", 0)), height=1)
+        st.iframe(
+            tour.tour_html(force, st.session_state.get("tour_nonce", 0), source.is_snapshot),
+            height=1,
+        )

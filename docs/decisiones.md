@@ -29,6 +29,7 @@ Decisiones de arquitectura con su contexto, las alternativas consideradas y la r
 | [D-23](#d-23--un-tablero-que-responde-como-un-todo-a-los-filtros) | Tablero coherente con los filtros | Visualización |
 | [D-24](#d-24--integración-continua-con-postgis-real) | Integración continua | Calidad |
 | [D-25](#d-25--volumen-simulado-frente-a-escala-del-benchmark) | Volumen simulado frente a escala del benchmark | Oro |
+| [D-26](#d-26--demo-pública-con-una-foto-de-oro-en-duckdb) | Demo pública con una foto de Oro en DuckDB | Visualización |
 
 ---
 
@@ -325,3 +326,23 @@ Decisiones de arquitectura con su contexto, las alternativas consideradas y la r
   - La ingesta rechaza lecturas de más de 7 días (D-09), así que la API admite como máximo ~800 000 filas de esta flota, y tardaría entre 30 y 70 minutos.
   - Replicar en SQL genera 5 millones de filas en ~20 s y prueba lo que importa: el comportamiento de índices y particiones a escala, con la misma estructura y distribución espacial de los datos reales.
 - **Referencia de producción (estimación):** 10 000 vehículos que reportan cada 30 s generan ~29 millones de filas por día. Por eso las tablas grandes están particionadas por día (D-10).
+
+## D-26 · Demo pública con una foto de Oro en DuckDB
+
+- **Contexto:** el tablero debe poder verse con un enlace, sin instalar nada ni usar contraseñas. Los hostings gratuitos de Streamlit no pueden correr PostgreSQL.
+- **Opciones:**
+  - (a) Streamlit Community Cloud con una foto de la capa Oro en Parquet, consultada con DuckDB dentro del mismo proceso;
+  - (b) Streamlit Community Cloud con un PostgreSQL gratuito en la nube.
+- **Decisión:** (a).
+  - `fleet_pipeline.queries.snapshot` exporta lo que el tablero consulta de Oro y las geocercas, unos 2 MB, a `data/snapshot/`, y responde las mismas 9 consultas con DuckDB.
+  - El tablero elige solo su fuente (`dashboard/data.py`): PostGIS si hay configuración de base, y la foto si no. Una insignia "Demo · foto de los datos" lo indica, y los textos no afirman que PostgreSQL aplica el rol cuando no es así.
+- **Por qué:**
+  - No hay base que pueda suspenderse, vencer ni exigir credenciales mientras se evalúa.
+  - Un test de integración exporta la base de prueba y compara las 9 consultas fila por fila contra PostGIS, con los dos roles.
+- **Hallazgos del test:**
+  - Tres órdenes no eran deterministas en PostGIS: geocercas con el mismo límite, alertas que empiezan en el mismo instante y episodios con dos lecturas a la misma velocidad máxima.
+  - Ahora tienen desempate (código, ID de alerta y la lectura más temprana), así que el tablero local también es estable.
+- **Límites:**
+  - La foto es estática: refleja el día en que se exportó (`tasks.py snapshot`).
+  - Los milisegundos mostrados son de DuckDB, no de PostGIS.
+  - No hay roles de base de datos: la consulta del analista nunca lee la tabla de IDs, que son los ficticios del simulador.

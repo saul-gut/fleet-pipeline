@@ -48,30 +48,38 @@ def _local(ts: datetime) -> str:
     return ts.astimezone(BOGOTA).strftime("%d/%m %H:%M")
 
 
-def loading_overlay() -> str:
+def loading_overlay(engine: str) -> str:
     """Ventana "Cargando datos…". El CSS la muestra solo mientras Streamlit ejecuta la página
     (atributo data-test-script-state="running") y con un retraso, para que no parpadee en las
     recargas rápidas. La barra es indeterminada: Streamlit no informa cuánto falta."""
-    return """
+    return f"""
     <div class="app-loading"><div class="card">
       <div class="spinner"></div>
-      <div><b>Cargando datos…</b><span>Consultando la capa Oro en PostGIS</span>
+      <div><b>Cargando datos…</b><span>Consultando la capa Oro ({escape(engine)})</span>
         <div class="track"><div class="fill"></div></div></div>
     </div></div>"""
 
 
-def hero(role_label: str, masked: bool, last_ts: str) -> str:
+def hero(role_label: str, masked: bool, last_ts: str, engine: str, snapshot: bool) -> str:
     role_class = "mask" if masked else "admin"
     role_text = f"🔒 {role_label} · IDs enmascarados" if masked else f"🛡️ {role_label} · IDs reales"
+    demo = (
+        '<span class="badge" title="Demo pública: una foto de la capa Oro consultada con DuckDB, '
+        'sin servidor de base de datos. En local, el tablero consulta PostGIS.">'
+        "📸 Demo · foto de los datos</span>"
+        if snapshot
+        else ""
+    )
     return f"""
     <div class="hero">
       <div>
         <h1>Centro de control de flota</h1>
-        <p>Telemetría IoT/AVL · Bogotá, Medellín y corredor Ruta 60 · Capa Oro (PostGIS)</p>
+        <p>Telemetría IoT/AVL · Bogotá, Medellín y corredor Ruta 60 ·
+           Capa Oro ({escape(engine)})</p>
       </div>
       <div class="badges">
         <span class="badge"><span class="dot"></span>Datos hasta {escape(last_ts)}</span>
-        <span class="badge {role_class}">{escape(role_text)}</span>
+        <span class="badge {role_class}">{escape(role_text)}</span>{demo}
       </div>
     </div>"""
 
@@ -214,13 +222,13 @@ def alerts_panel(
     return _panel(title, subtitle, f'<div class="scroll">{table}</div>')
 
 
-def timings(items: dict[str, float]) -> str:
+def timings(items: dict[str, float], engine: str) -> str:
     chips = "".join(
         f'<span class="chip">{escape(k)} <b>{v:.1f} ms</b></span>' for k, v in items.items()
     )
     total = sum(items.values())
     return (
-        f'<div class="timings">⏱ Consultas a la capa Oro (PostGIS): {chips}'
+        f'<div class="timings">⏱ Consultas a la capa Oro ({escape(engine)}): {chips}'
         f'<span class="chip">total <b>{total:.1f} ms</b></span>'
         '<span class="chip">geocercas <b>en caché (1 h)</b></span></div>'
     )

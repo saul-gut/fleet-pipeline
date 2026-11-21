@@ -232,7 +232,22 @@ Los resultados se agregan a [`docs/benchmarks.md`](docs/benchmarks.md) y el esqu
 
 ---
 
-## 9. Detener y limpiar
+## 9. Demo pública del tablero (opcional)
+
+El tablero también puede funcionar sin PostgreSQL, a partir de una **foto de la capa Oro** en `data/snapshot/` (Parquet, ~2 MB) consultada con DuckDB. Así se publica en Streamlit Community Cloud ([D-26](docs/decisiones.md#d-26--demo-pública-con-una-foto-de-oro-en-duckdb)).
+
+```bash
+uv run python tasks.py snapshot                                         # exporta la foto desde PostGIS
+FLEET_DATA_SOURCE=snapshot uv run streamlit run dashboard/app.py       # prueba local en modo foto
+```
+
+> En PowerShell, la variable se define antes: `$env:FLEET_DATA_SOURCE = "snapshot"`.
+
+Sin un archivo `.env`, el tablero usa la foto automáticamente. Para publicarlo en [share.streamlit.io](https://share.streamlit.io): *Create app* → repositorio `fleet-pipeline`, rama `main`, archivo `dashboard/app.py`, Python 3.12. No requiere variables ni secretos.
+
+---
+
+## 10. Detener y limpiar
 
 ```bash
 uv run python tasks.py down         # detiene PostGIS; los datos se conservan
@@ -267,6 +282,7 @@ uv run python tasks.py reset-db     # borra el volumen y recrea la base desde db
 | `seed` | `python -m fleet_pipeline.geofences load` · `python -m fleet_pipeline.simulator register` · `python -m fleet_pipeline.simulator run --backfill-hours 24` · `python -m fleet_pipeline.processing all` |
 | `simulate` | `python -m fleet_pipeline.simulator run --live` |
 | `process` | `python -m fleet_pipeline.processing all` |
+| `snapshot` | `python -m fleet_pipeline.queries.snapshot` |
 | `dashboard` | `uv run streamlit run dashboard/app.py --server.port 8501` |
 | `lint` | `ruff check .` y `ruff format --check .` |
 | `test` | `pytest --cov --cov-report=term-missing` |

@@ -1,24 +1,35 @@
-"""Fuente de datos del dashboard (D-21).
+"""Fuentes de datos del dashboard (D-21, D-26).
 
-La interfaz solo conoce `DataSource`. Hoy la implementa PostgreSQL con roles; para publicar
-en internet se puede agregar una fuente basada en una foto enmascarada de Oro sin tocar app.py.
+La interfaz solo conoce `DataSource`. Hay dos implementaciones:
+- `PostgresSource`: la capa Oro en PostGIS, asumiendo el rol del usuario (uso local).
+- `SnapshotSource`: una foto de Oro en Parquet consultada con DuckDB, sin servidor de base
+  de datos (demo pública en Streamlit Community Cloud).
+
+`select_source` elige sola: PostgreSQL si hay configuración de base (variables de entorno o
+`.env`) y la foto si no. La variable FLEET_DATA_SOURCE=postgres|snapshot fuerza una de las dos.
 """
 
 from __future__ import annotations
 
+import os
 from collections.abc import Callable
 from typing import Any, Protocol
 
 import streamlit as st
 from psycopg_pool import ConnectionPool
+from pydantic import ValidationError
 
 from fleet_pipeline.config import get_settings
 from fleet_pipeline.queries import dashboard as q
 from fleet_pipeline.queries.dashboard import AlertFilter, QueryResult, Scope
+from fleet_pipeline.queries.snapshot import SnapshotQueries
 from fleet_pipeline.security.auth import Role
 
 
 class DataSource(Protocol):
+    engine: str  # nombre visible del motor, p. ej. "PostGIS"
+    is_snapshot: bool
+
     def date_bounds(self, role: Role) -> QueryResult: ...
     def vehicles(self, role: Role) -> QueryResult: ...
     def kpis(self, role: Role, scope: Scope, alert_filter: AlertFilter) -> QueryResult: ...
@@ -38,6 +49,9 @@ def _pool() -> ConnectionPool:
 
 class PostgresSource:
     """Lee la capa Oro asumiendo el rol del usuario en PostgreSQL."""
+
+    engine = "PostGIS"
+    is_snapshot = False
 
     def _run(self, fn: Callable[..., QueryResult], *args: Any) -> QueryResult:
         with _pool().connection() as conn:
@@ -69,3 +83,33 @@ class PostgresSource:
 
     def geofences(self, role: Role) -> QueryResult:
         return self._run(q.geofences, role)
+
+
+@st.cache_resource(show_spinner=False)
+def _snapshot() -> SnapshotQueries:
+    """La foto se carga en memoria una vez por proceso y la comparten todas las sesiones."""
+    return SnapshotQueries()
+
+
+class SnapshotSource:
+    """Lee una foto de la capa Oro (Parquet) con DuckDB. Mismas consultas y resultados que
+    PostgreSQL (lo verifica un test); la consulta del analista nunca toca los IDs."""
+
+    engine = "foto en DuckDB"
+    is_snapshot = True
+
+    def __getattr__(self, name: str) -> Callable[..., QueryResult]:
+        return getattr(_snapshot(), name)
+
+
+def select_source() -> DataSource:
+    choice = os.environ.get("FLEET_DATA_SOURCE", "").lower()
+    if choice == "snapshot":
+        return SnapshotSource()
+    if choice == "postgres":
+        return PostgresSource()
+    try:
+        get_settings()
+    except ValidationError:  # sin configuración de base: demo pública con la foto
+        return SnapshotSource()
+    return PostgresSource()

@@ -207,11 +207,29 @@ _TEMPLATE = """<!doctype html><html><body><script>
 </script></body></html>"""
 
 
-def tour_html(force: bool, nonce: int = 0) -> str:
+# En la demo pública no hay PostgreSQL: los textos que lo mencionan se ajustan.
+_SNAPSHOT_TEXTS = {
+    "leída de la capa Oro de PostGIS": "leída de una foto de la capa Oro (DuckDB)",
+    "La regla la aplica PostgreSQL con <code>SET ROLE</code>: no es un filtro visual, la base "
+    "se niega a entregar el dato.": "En esta demo, la consulta del analista nunca lee los IDs "
+    "reales; en la instalación local lo garantiza PostgreSQL con <code>SET ROLE</code>.",
+}
+
+
+def _steps(snapshot: bool) -> list[dict]:
+    if not snapshot:
+        return STEPS
+    text = json.dumps(STEPS, ensure_ascii=False)
+    for original, replacement in _SNAPSHOT_TEXTS.items():
+        text = text.replace(original, replacement)
+    return json.loads(text)
+
+
+def tour_html(force: bool, nonce: int = 0, snapshot: bool = False) -> str:
     """HTML del iframe invisible que inicia el recorrido en la página principal."""
     return (
         _TEMPLATE.replace("__FORCE__", "true" if force else "false")
-        .replace("__STEPS__", json.dumps(STEPS, ensure_ascii=False))
+        .replace("__STEPS__", json.dumps(_steps(snapshot), ensure_ascii=False))
         .replace("__CSS__", json.dumps(TOUR_CSS))
         .replace("__DRIVER__", DRIVER)
         # El nonce cambia el contenido para que Streamlit vuelva a montar el iframe al repetir.

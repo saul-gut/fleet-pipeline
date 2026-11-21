@@ -81,6 +81,11 @@ def simulate() -> int:
     return run([sys.executable, "-m", "fleet_pipeline.simulator", "run", "--live"])
 
 
+def snapshot() -> int:
+    """Exporta una foto de la capa Oro a data/snapshot/ para la demo pública (D-26)."""
+    return run([sys.executable, "-m", "fleet_pipeline.queries.snapshot"])
+
+
 def lint() -> int:
     """Revisa estilo y formato sin modificar archivos."""
     return run(["ruff", "check", "."], ["ruff", "format", "--check", "."])
@@ -106,6 +111,7 @@ TASKS: dict[str, Callable[[], int]] = {
     "seed": seed,
     "simulate": simulate,
     "process": process,
+    "snapshot": snapshot,
     "lint": lint,
     "fmt": fmt,
     "test": test,

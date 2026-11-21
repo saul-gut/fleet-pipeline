@@ -5,9 +5,11 @@ description = "Pipeline geoespacial de telemetría vehicular (Bronce / Plata / O
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
 dependencies = [
+    "duckdb>=2.0.1",
     "fastapi>=0.165.0",
     "httpx>=0.28.1",
     "psycopg[binary,pool]>=3.3.9",
+    "pyarrow>=26.0.1",
     "pydantic-settings>=2.16.3",
     "pyproj>=3.8.0",
     "shapely>=2.2.0",
@@ -40,6 +42,10 @@ target-version = "py312"
 [tool.ruff.lint]
 # E/F: errores básicos · I: orden de imports · B: bugs comunes · UP: sintaxis moderna · SIM: simplificaciones
 select = ["E", "F", "I", "B", "UP", "SIM"]
+
+[tool.ruff.lint.per-file-ignores]
+# app.py ajusta sys.path antes de importar el proyecto (despliegue sin instalar el paquete).
+"dashboard/app.py" = ["E402"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

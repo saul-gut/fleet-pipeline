@@ -200,7 +200,7 @@ def infractions(
                s.excess_kmh
         FROM gold.fleet_events AS s
         WHERE s.alert_type IS NOT NULL AND {alert_filter} AND {in_scope} AND {ts_range}
-        ORDER BY s.alert_id, s.speed_kmh DESC
+        ORDER BY s.alert_id, s.speed_kmh DESC, s.ts
         """
     ).format(alert_filter=_ALERT_FILTER, in_scope=_IN_SCOPE, ts_range=_TS_RANGE)
     return run(conn, role, query, scope.params() | alert_filter.params())
@@ -223,13 +223,13 @@ def recent_alerts(
                round(sum(s.step_m)) AS distance_m,
                extract(epoch FROM max(s.ts) - min(s.ts))::int AS duration_s,
                -- El punto del mapa es el pico de velocidad del episodio (como el heatmap);
-               -- el episodio completo es el tramo coloreado de la ruta.
-               ST_X((array_agg(s.geom ORDER BY s.speed_kmh DESC))[1]) AS lon,
-               ST_Y((array_agg(s.geom ORDER BY s.speed_kmh DESC))[1]) AS lat
+               -- el episodio completo es el tramo coloreado de la ruta. Empate: el primero.
+               ST_X((array_agg(s.geom ORDER BY s.speed_kmh DESC, s.ts))[1]) AS lon,
+               ST_Y((array_agg(s.geom ORDER BY s.speed_kmh DESC, s.ts))[1]) AS lat
         FROM gold.fleet_events AS s {join}
         WHERE s.alert_type IS NOT NULL AND {alert_filter} AND {in_scope} AND {ts_range}
         GROUP BY s.alert_id, label, s.alert_type, s.severity
-        ORDER BY started_at DESC
+        ORDER BY started_at DESC, alert_id DESC
         LIMIT %(limit)s
         """
     ).format(
@@ -252,7 +252,7 @@ def fuel_alerts(
                ST_X(s.geom) AS lon, ST_Y(s.geom) AS lat
         FROM gold.fuel_alerts AS s {join}
         WHERE {in_scope} AND s.severity = ANY(%(severities)s) AND {ts_range}
-        ORDER BY s.started_at DESC
+        ORDER BY s.started_at DESC, s.alert_id DESC
         """
     ).format(
         label=_LABEL[role],
@@ -273,6 +273,6 @@ def geofences(conn: psycopg.Connection, role: Role) -> QueryResult:
                ST_AsGeoJSON(ST_Multi(ST_SimplifyPreserveTopology(geom, 0.0001)), 5)::json
                    AS geometry
         FROM analytics.geofences
-        ORDER BY speed_limit_kmh DESC
+        ORDER BY speed_limit_kmh DESC, code
         """,
     )
