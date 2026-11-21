@@ -243,7 +243,7 @@ FLEET_DATA_SOURCE=snapshot uv run streamlit run dashboard/app.py       # prueba 
 
 > En PowerShell, la variable se define antes: `$env:FLEET_DATA_SOURCE = "snapshot"`.
 
-Sin un archivo `.env`, el tablero usa la foto automáticamente. Para publicarlo en [share.streamlit.io](https://share.streamlit.io): *Create app* → repositorio `fleet-pipeline`, rama `main`, archivo `dashboard/app.py`, Python 3.12. No requiere variables ni secretos.
+La demo publicada está en <https://fleet-pipeline-saul.streamlit.app/>. Sin un archivo `.env`, el tablero usa la foto automáticamente. Para publicarlo en [share.streamlit.io](https://share.streamlit.io): *Create app* → repositorio `fleet-pipeline`, rama `main`, archivo `dashboard/app.py`, Python 3.12. No requiere variables ni secretos.
 
 ---
 

@@ -1,6 +1,6 @@
 # Fleet Pipeline · Telemetría vehicular geoespacial
 
-[![CI](https://github.com/saul-gut/fleet-pipeline/actions/workflows/ci.yml/badge.svg)](https://github.com/saul-gut/fleet-pipeline/actions/workflows/ci.yml)
+[![CI](https://github.com/saul-gut/fleet-pipeline/actions/workflows/ci.yml/badge.svg)](https://github.com/saul-gut/fleet-pipeline/actions/workflows/ci.yml) [![Demo en línea](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://fleet-pipeline-saul.streamlit.app/)
 
 Pipeline de datos geoespaciales para flotas (IoT/AVL) con arquitectura **Bronce → Plata → Oro** sobre **PostgreSQL 16 + PostGIS 3.5**. Recibe telemetría GPS, la valida y la cruza con geocercas. A partir de ahí:
 
@@ -11,6 +11,10 @@ Pipeline de datos geoespaciales para flotas (IoT/AVL) con arquitectura **Bronce 
 Todo se consolida en una tabla para BI que responde en milisegundos sobre millones de registros.
 
 ![Centro de control de flota](docs/img/dashboard.png)
+
+**[Ver el tablero en línea →](https://fleet-pipeline-saul.streamlit.app/)** Es una demo pública, sin instalar nada ni usar contraseñas. Muestra una foto de la capa Oro consultada con DuckDB; en local, el mismo tablero consulta PostGIS ([D-26](docs/decisiones.md#d-26--demo-pública-con-una-foto-de-oro-en-duckdb)).
+
+> Si nadie la ha abierto en las últimas horas, Streamlit la despierta con un botón y tarda unos 30 segundos en cargar.
 
 ---
 
