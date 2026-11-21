@@ -53,6 +53,13 @@ def api() -> int:
     return run([sys.executable, "-m", "uvicorn", "fleet_pipeline.api.main:app", "--port", "8000"])
 
 
+def dashboard() -> int:
+    """Abre el centro de control en http://localhost:8501 (requiere la base con datos)."""
+    return run(
+        [sys.executable, "-m", "streamlit", "run", "dashboard/app.py", "--server.port", "8501"]
+    )
+
+
 def seed() -> int:
     """Carga geocercas y flota, simula 24 h y procesa Plata y Oro (requiere la API corriendo)."""
     simulator = [sys.executable, "-m", "fleet_pipeline.simulator"]
@@ -95,6 +102,7 @@ TASKS: dict[str, Callable[[], int]] = {
     "reset-db": reset_db,
     "psql": psql,
     "api": api,
+    "dashboard": dashboard,
     "seed": seed,
     "simulate": simulate,
     "process": process,

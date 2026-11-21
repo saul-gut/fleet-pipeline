@@ -36,7 +36,7 @@
 <div id="map"></div>
 <div class="chip-top" id="chips"></div>
 <div class="legend" id="legend"></div>
-<div class="attribution">© <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a> · © <a href="https://carto.com/attributions" target="_blank">CARTO</a></div>
+<div class="attribution">Mapa base: Esri, HERE, Garmin, © <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a> y la comunidad de usuarios GIS</div>
 <script>
 const DATA = __DATA__;
 
@@ -62,16 +62,22 @@ const trip = DATA.route && DATA.route.trip.path.length ? [DATA.route.trip] : [];
 const tripEnd = trip.length ? trip[0].timestamps[trip[0].timestamps.length - 1] : 0;
 
 // --- Capas ---
-const basemap = new TileLayer({
-  id: 'basemap',
-  // Teselas públicas de CARTO (sin clave): los subdominios a-d reparten la carga.
-  data: ['a', 'b', 'c', 'd'].map(s => `https://${s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png`),
-  minZoom: 0, maxZoom: 19, tileSize: 256,
+// Mapa base: Esri World Dark Gray Canvas (D-22), sin clave, con atribución.
+// Dos capas: el fondo (teñido hacia el azul noche del tablero) y las etiquetas de calles y barrios.
+const ESRI = 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas';
+const esriLayer = (id, service, tint) => new TileLayer({
+  id, data: `${ESRI}/${service}/MapServer/tile/{z}/{y}/{x}`,
+  minZoom: 0, maxZoom: 16, tileSize: 256,
   renderSubLayers: props => {
     const [[west, south], [east, north]] = props.tile.boundingBox;
-    return new BitmapLayer(props, {data: null, image: props.data, bounds: [west, south, east, north]});
+    return new BitmapLayer(props, {
+      data: null, image: props.data, bounds: [west, south, east, north],
+      tintColor: tint, desaturate: 0.15,
+    });
   }
 });
+const basemap = esriLayer('basemap', 'World_Dark_Gray_Base', [120, 138, 175]);
+const labels = esriLayer('labels', 'World_Dark_Gray_Reference', [235, 238, 245]);
 
 function geofenceLayers() {
   if (!DATA.show.geofences) return [];
@@ -219,7 +225,8 @@ const LOOP_MS = 25000;
 const started = performance.now();
 function frame(now) {
   const t = ((now - started) % LOOP_MS) / LOOP_MS;
-  deckgl.setProps({layers: [basemap, ...geofenceLayers(), ...infractionLayers(),
+  // Orden de abajo hacia arriba: fondo, geocercas, infracciones, etiquetas, ruta y alertas.
+  deckgl.setProps({layers: [basemap, ...geofenceLayers(), ...infractionLayers(), labels,
                             ...routeLayers(t), ...alertLayers(t)]});
   requestAnimationFrame(frame);
 }
