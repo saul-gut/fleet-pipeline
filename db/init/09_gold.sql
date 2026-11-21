@@ -146,6 +146,33 @@ END;
 $$;
 
 
+-- Puntaje de 0 a 100 a partir de puntos de penalización y km (D-19). Una sola definición
+-- en SQL, usada por la vista materializada y por el ranking del dashboard; replica
+-- rules.driver_score (Python) y un test de integración verifica que coinciden.
+CREATE OR REPLACE FUNCTION gold.score_value(p_points numeric, p_km numeric)
+RETURNS numeric
+LANGUAGE sql
+IMMUTABLE
+AS $$
+    SELECT CASE WHEN p_km IS NULL OR p_km < 5 THEN NULL
+                ELSE round((100 * exp(-0.005 * p_points / p_km * 100))::numeric, 1)
+           END;
+$$;
+
+-- Alertas de combustible para BI, con el ID ya enmascarado. Es una vista: se ejecuta con
+-- los permisos de su dueño, así que el analista la lee sin acceso a Plata ni a Bronce.
+CREATE OR REPLACE VIEW gold.fuel_alerts AS
+SELECT
+    a.alert_id, v.vehicle_key, analytics.mask_vehicle_id(v.vehicle_id) AS vehicle_id_masked,
+    v.vehicle_type, a.severity, a.started_at, a.ended_at, a.geom,
+    (a.details->>'fuel_l')::real AS fuel_l,
+    (a.details->>'fuel_needed_l')::real AS fuel_needed_l,
+    (a.details->>'remaining_km')::real AS remaining_km,
+    a.details->>'route_id' AS route_id
+FROM silver.alerts AS a
+JOIN bronze.vehicles AS v USING (vehicle_id)
+WHERE a.alert_type = 'LOW_FUEL_FOR_ROUTE';
+
 -- Driver Score diario por vehículo (D-19). Pequeña (vehículos × días): se recalcula entera.
 -- Los pesos replican processing/rules.py (ScoreParams); un test de integración verifica que
 -- ambos dan el mismo puntaje.
@@ -199,9 +226,7 @@ WITH daily AS (
 SELECT
     s.*,
     round((s.penalty_points / nullif(s.km, 0) * 100)::numeric, 1) AS points_per_100km,
-    CASE WHEN s.km < 5 THEN NULL
-         ELSE round((100 * exp(-0.005 * s.penalty_points / s.km * 100))::numeric, 1)
-    END AS score
+    gold.score_value(s.penalty_points, s.km::numeric) AS score
 FROM scored AS s
 WITH NO DATA;
 

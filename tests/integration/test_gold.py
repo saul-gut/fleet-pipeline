@@ -1,59 +1,12 @@
 """Capa Oro: privacidad por diseño y Driver Score idéntico al de rules.py (D-19)."""
 
-from collections.abc import Iterator
-from datetime import UTC, datetime, timedelta
-
 import psycopg
 import pytest
 from psycopg import errors
 
-from fleet_pipeline.geofences.loader import load_geofences, read_features
-from fleet_pipeline.processing.gold import run_gold
 from fleet_pipeline.processing.rules import driver_score, penalty_points
-from fleet_pipeline.processing.silver import run_silver
 
 pytestmark = pytest.mark.integration
-
-START = datetime.now(UTC).replace(microsecond=0) - timedelta(hours=1)
-STEP_DEG = 0.001  # ~111 m hacia el norte cada 10 s = 40 km/h
-
-
-@pytest.fixture
-def conn_autocommit(conninfo: str) -> Iterator[psycopg.Connection]:
-    with psycopg.connect(conninfo, autocommit=True) as connection:
-        if connection.execute("SELECT count(*) FROM silver.geofence_parts").fetchone() == (0,):
-            load_geofences(connection, read_features())
-        yield connection
-
-
-def drive_north(conn: psycopg.Connection, vehicle_id: str, speeds: list[float]) -> None:
-    """Un recorrido de ~111 m por lectura por el norte de Bogotá (solo perímetro urbano)."""
-    for i, speed in enumerate(speeds):
-        conn.execute(
-            """
-            INSERT INTO bronze.telemetry_raw (vehicle_id, ts, lat, lon, speed_kmh, fuel_pct)
-            VALUES (%s, %s, %s, -74.0350, %s, 80)
-            """,
-            (vehicle_id, START + timedelta(seconds=10 * i), 4.7000 + STEP_DEG * i, speed),
-        )
-
-
-@pytest.fixture
-def processed_trip(
-    conn_autocommit: psycopg.Connection, test_vehicles: tuple[str, ...]
-) -> tuple[str, int]:
-    """~7,7 km a 40 km/h con un exceso sostenido de 3 lecturas a 70 km/h."""
-    vehicle = test_vehicles[0]
-    speeds = [40.0] * 70
-    speeds[10:13] = [70.0, 70.0, 70.0]
-    drive_north(conn_autocommit, vehicle, speeds)
-    run_silver(conn_autocommit)
-    run_gold(conn_autocommit)
-    key = conn_autocommit.execute(
-        "SELECT vehicle_key FROM bronze.vehicles WHERE vehicle_id = %s", (vehicle,)
-    ).fetchone()
-    assert key is not None
-    return vehicle, key[0]
 
 
 def test_gold_never_stores_real_ids(
