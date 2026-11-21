@@ -42,6 +42,7 @@ DECLARE
     v_alerts   bigint := 0;
     v_count    bigint;
     v_island   record;
+    v_stamp    timestamptz;
 BEGIN
     DROP TABLE IF EXISTS _affected, _zoned, _steps, _cum, _smooth, _calc;
 
@@ -52,6 +53,13 @@ BEGIN
         v_from := '-infinity';
         INSERT INTO silver.processing_state (job, watermark) VALUES ('silver', v_from);
     END IF;
+
+    -- Sello de este lote para Oro (processed_at y updated_at), tomado DESPUÉS de obtener el
+    -- bloqueo: como las ejecuciones de Plata van de a una, el lote siguiente siempre tendrá
+    -- un sello mayor que el de este, y Oro puede leer con una marca de agua estricta, sin
+    -- solape ni reprocesos. now() no sirve: es la hora de inicio de la transacción, que
+    -- puede ser anterior a la espera por el bloqueo.
+    v_stamp := clock_timestamp();
 
     SELECT max(received_at) INTO v_to
     FROM bronze.telemetry_raw WHERE received_at > v_from - p_overlap;
@@ -183,13 +191,14 @@ BEGIN
     INSERT INTO silver.telemetry_enriched AS e (
         vehicle_id, ts, geom, speed_kmh, fuel_pct, fuel_l, geofence_id, zone_type,
         speed_limit_kmh, is_over_threshold, step_m, route_id, route_fraction, direction,
-        remaining_km, consumption_l_100km, fuel_needed_l, is_low_fuel, quality_flags
+        remaining_km, consumption_l_100km, fuel_needed_l, is_low_fuel, quality_flags,
+        processed_at
     )
     SELECT
         c.vehicle_id, c.ts, c.geom, c.speed_kmh, c.fuel_pct, c.fuel_l, c.geofence_id, c.zone_type,
         c.speed_limit_kmh, c.is_over_threshold, c.step_m, c.route_id, c.route_fraction,
         c.direction, c.remaining_km, (c.consumption_l_km * 100)::real, c.fuel_needed_l,
-        c.fuel_smooth_l < c.fuel_needed_l, c.quality_flags
+        c.fuel_smooth_l < c.fuel_needed_l, c.quality_flags, v_stamp
     FROM _calc AS c
     WHERE c.is_new
     ON CONFLICT (vehicle_id, ts) DO UPDATE SET
@@ -200,7 +209,17 @@ BEGIN
         direction = EXCLUDED.direction, remaining_km = EXCLUDED.remaining_km,
         consumption_l_100km = EXCLUDED.consumption_l_100km,
         fuel_needed_l = EXCLUDED.fuel_needed_l, is_low_fuel = EXCLUDED.is_low_fuel,
-        processed_at = now();
+        processed_at = v_stamp
+    -- El solape vuelve a calcular lecturas ya procesadas: solo se reescriben si algo cambió.
+    -- Así no se generan escrituras inútiles y Oro no recarga lo que sigue igual.
+    WHERE (e.geofence_id, e.speed_limit_kmh, e.is_over_threshold, e.step_m, e.route_id,
+           e.route_fraction, e.direction, e.remaining_km, e.consumption_l_100km,
+           e.fuel_needed_l, e.is_low_fuel)
+          IS DISTINCT FROM
+          (EXCLUDED.geofence_id, EXCLUDED.speed_limit_kmh, EXCLUDED.is_over_threshold,
+           EXCLUDED.step_m, EXCLUDED.route_id, EXCLUDED.route_fraction, EXCLUDED.direction,
+           EXCLUDED.remaining_km, EXCLUDED.consumption_l_100km, EXCLUDED.fuel_needed_l,
+           EXCLUDED.is_low_fuel);
     GET DIAGNOSTICS v_rows = ROW_COUNT;
 
     -- 6a. Episodios de exceso: lecturas consecutivas sobre el umbral, en la misma geocerca
@@ -235,7 +254,8 @@ BEGIN
         HAVING count(*) >= p_min_consecutive
     )
     INSERT INTO silver.alerts AS al (
-        vehicle_id, alert_type, severity, started_at, ended_at, geofence_id, geom, details
+        vehicle_id, alert_type, severity, started_at, ended_at, geofence_id, geom, details,
+        updated_at
     )
     SELECT
         e.vehicle_id,
@@ -253,7 +273,8 @@ BEGIN
             'duration_s', extract(epoch FROM e.ended_at - e.started_at)::int,
             'zone_code', e.zone_code,
             'zone_type', e.zone_type
-        )
+        ),
+        v_stamp
     FROM episodes AS e
     -- Solo episodios que tocan datos nuevos y cuyo inicio real se conoce. Si el episodio
     -- empieza en el borde de la ventana de contexto y hay una lectura justo antes, podría
@@ -270,7 +291,9 @@ BEGIN
       )
     ON CONFLICT (vehicle_id, alert_type, started_at) DO UPDATE SET
         severity = EXCLUDED.severity, ended_at = EXCLUDED.ended_at,
-        geom = EXCLUDED.geom, details = EXCLUDED.details, updated_at = now();
+        geom = EXCLUDED.geom, details = EXCLUDED.details, updated_at = v_stamp
+    WHERE (al.severity, al.ended_at, al.details)
+          IS DISTINCT FROM (EXCLUDED.severity, EXCLUDED.ended_at, EXCLUDED.details);
     GET DIAGNOSTICS v_count = ROW_COUNT;
     v_alerts := v_alerts + v_count;
 
@@ -304,14 +327,14 @@ BEGIN
         HAVING count(*) >= p_min_consecutive
     LOOP
         UPDATE silver.alerts AS al
-        SET ended_at = greatest(al.ended_at, v_island.ended_at), updated_at = now()
+        SET ended_at = greatest(al.ended_at, v_island.ended_at), updated_at = v_stamp
         WHERE al.vehicle_id = v_island.vehicle_id
           AND al.alert_type = 'LOW_FUEL_FOR_ROUTE'
           AND al.ended_at >= v_island.started_at - p_lookback
           AND al.started_at <= v_island.started_at;
         IF NOT FOUND THEN
             INSERT INTO silver.alerts (
-                vehicle_id, alert_type, severity, started_at, ended_at, geom, details
+                vehicle_id, alert_type, severity, started_at, ended_at, geom, details, updated_at
             ) VALUES (
                 v_island.vehicle_id, 'LOW_FUEL_FOR_ROUTE',
                 CASE WHEN v_island.fuel_l / v_island.needed_l < p_low_fuel_severe_coverage
@@ -326,7 +349,8 @@ BEGIN
                     'remaining_km', round(v_island.remaining_km::numeric, 1),
                     'consumption_l_100km', round((v_island.consumption_l_km * 100)::numeric, 1),
                     'route_id', v_island.route_id
-                )
+                ),
+                v_stamp
             )
             ON CONFLICT (vehicle_id, alert_type, started_at) DO NOTHING;
         END IF;

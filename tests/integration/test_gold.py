@@ -4,7 +4,9 @@ import psycopg
 import pytest
 from psycopg import errors
 
+from fleet_pipeline.processing.gold import run_gold
 from fleet_pipeline.processing.rules import driver_score, penalty_points
+from fleet_pipeline.processing.silver import run_silver
 
 pytestmark = pytest.mark.integration
 
@@ -57,3 +59,26 @@ def test_sql_driver_score_matches_python(
     assert points == penalty_points([("SPEEDING", "moderate")]) == 3
     assert km == pytest.approx(7.66, abs=0.1)
     assert float(score) == pytest.approx(driver_score(points, km), abs=0.05)
+
+
+def test_gold_is_strictly_incremental(
+    conn_autocommit: psycopg.Connection, processed_trip: tuple[str, int]
+) -> None:
+    """Oro solo escribe lo nuevo: sin datos nuevos no escribe nada, y un lote de 10 lecturas
+    escribe 10 filas, aunque Plata haya procesado mucho más en los minutos anteriores."""
+    vehicle, _ = processed_trip
+    assert run_gold(conn_autocommit)[0] == 0
+
+    # 10 lecturas más, 10 s después del final del recorrido y ~111 m más al norte cada una.
+    conn_autocommit.execute(
+        """
+        INSERT INTO bronze.telemetry_raw (vehicle_id, ts, lat, lon, speed_kmh, fuel_pct)
+        SELECT vehicle_id, ts + i * interval '10 seconds', lat + 0.001 * i, lon, 40, 80
+        FROM (SELECT vehicle_id, ts, lat, lon FROM bronze.telemetry_raw
+              WHERE vehicle_id = %s ORDER BY ts DESC LIMIT 1) AS last,
+             generate_series(1, 10) AS i
+        """,
+        (vehicle,),
+    )
+    run_silver(conn_autocommit)
+    assert run_gold(conn_autocommit)[0] == 10

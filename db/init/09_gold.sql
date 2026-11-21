@@ -56,7 +56,13 @@ CREATE INDEX IF NOT EXISTS fleet_events_ts_brin ON gold.fleet_events USING brin 
 -- Carga incremental Plata -> Oro. Procesa las lecturas de Plata actualizadas desde la última
 -- marca de agua, más las cubiertas por alertas que cambiaron (un episodio puede extenderse
 -- en un lote posterior). Upsert: reprocesar no duplica.
-CREATE OR REPLACE FUNCTION gold.process_new(p_overlap interval DEFAULT '5 minutes')
+--
+-- Marca de agua estricta, sin solape: Plata sella cada lote con la hora en que obtiene su
+-- bloqueo (silver.process_new), así que un lote que se confirme después de esta lectura
+-- siempre tendrá un sello mayor. Un solape volvería a escribir todo lo reciente en cada
+-- ejecución (medido: 112 934 filas reescritas para cargar 70 lecturas nuevas).
+DROP FUNCTION IF EXISTS gold.process_new(interval);
+CREATE OR REPLACE FUNCTION gold.process_new()
 RETURNS TABLE (events_upserted bigint, new_watermark timestamptz)
 LANGUAGE plpgsql
 AS $$
@@ -77,7 +83,7 @@ BEGIN
     END IF;
 
     SELECT max(processed_at) INTO v_to
-    FROM silver.telemetry_enriched WHERE processed_at > v_from - p_overlap;
+    FROM silver.telemetry_enriched WHERE processed_at > v_from;
     IF v_to IS NULL THEN
         RETURN QUERY SELECT 0::bigint, v_from;
         RETURN;
@@ -86,13 +92,14 @@ BEGIN
     CREATE TEMP TABLE _gold_candidates ON COMMIT DROP AS
     SELECT e.vehicle_id, e.ts
     FROM silver.telemetry_enriched AS e
-    WHERE e.processed_at > v_from - p_overlap AND e.processed_at <= v_to
+    WHERE e.processed_at > v_from AND e.processed_at <= v_to
     UNION
     SELECT e.vehicle_id, e.ts
     FROM silver.alerts AS a
     JOIN silver.telemetry_enriched AS e
       ON e.vehicle_id = a.vehicle_id AND e.ts BETWEEN a.started_at AND a.ended_at
-    WHERE a.updated_at > v_from - p_overlap AND a.alert_type <> 'LOW_FUEL_FOR_ROUTE';
+    WHERE a.updated_at > v_from AND a.updated_at <= v_to
+      AND a.alert_type <> 'LOW_FUEL_FOR_ROUTE';
 
     SELECT min(ts), max(ts) INTO v_min, v_max FROM _gold_candidates;
     PERFORM public.ensure_daily_partitions(
