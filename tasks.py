@@ -48,6 +48,22 @@ def psql() -> int:
     return run(["docker", "compose", "exec", "db", "sh", "-c", PSQL_IN_CONTAINER])
 
 
+def api() -> int:
+    """Levanta la API en http://localhost:8000 (documentación en /docs)."""
+    return run([sys.executable, "-m", "uvicorn", "fleet_pipeline.api.main:app", "--port", "8000"])
+
+
+def seed() -> int:
+    """Registra la flota y simula 24 h de histórico (requiere la API corriendo)."""
+    simulator = [sys.executable, "-m", "fleet_pipeline.simulator"]
+    return run([*simulator, "register"], [*simulator, "run", "--backfill-hours", "24"])
+
+
+def simulate() -> int:
+    """Envía telemetría en vivo cada 10 s hasta Ctrl+C (requiere la API corriendo)."""
+    return run([sys.executable, "-m", "fleet_pipeline.simulator", "run", "--live"])
+
+
 def lint() -> int:
     """Revisa estilo y formato sin modificar archivos."""
     return run(["ruff", "check", "."], ["ruff", "format", "--check", "."])
@@ -68,6 +84,9 @@ TASKS: dict[str, Callable[[], int]] = {
     "down": down,
     "reset-db": reset_db,
     "psql": psql,
+    "api": api,
+    "seed": seed,
+    "simulate": simulate,
     "lint": lint,
     "fmt": fmt,
     "test": test,
