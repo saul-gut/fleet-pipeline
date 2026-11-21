@@ -2,7 +2,11 @@ services:
   db:
     image: postgis/postgis:16-3.5
     container_name: fleet-db
-    env_file: .env
+    # Solo las variables que necesita la base; las API keys no entran al contenedor.
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
     ports:
       - "${POSTGRES_PORT:-5432}:5432"
     volumes:
