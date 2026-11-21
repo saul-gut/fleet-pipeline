@@ -57,13 +57,22 @@ class FleetSimulation:
 
 
 class ApiSender:
-    """Envía lotes a POST /telemetry con reintentos ante fallas de red o del servidor."""
+    """Envía lotes a POST /telemetry con reintentos ante fallas de red o del servidor.
 
-    def __init__(self, base_url: str, api_key: str) -> None:
-        self._client = httpx.Client(base_url=base_url, headers={"X-API-Key": api_key}, timeout=60)
+    `transport` permite inyectar un transporte simulado en los tests (sin red real).
+    """
+
+    def __init__(
+        self, base_url: str, api_key: str, transport: httpx.BaseTransport | None = None
+    ) -> None:
+        self._client = httpx.Client(
+            base_url=base_url, headers={"X-API-Key": api_key}, timeout=60, transport=transport
+        )
         self.totals: Counter[str] = Counter()
 
     def send(self, batch: list[dict[str, Any]]) -> None:
+        """Reintenta solo lo transitorio (red caída o error 5xx). Un 4xx, como una API key
+        inválida o un lote demasiado grande, no se arregla reintentando: falla de inmediato."""
         for attempt in range(1, SEND_RETRIES + 1):
             try:
                 response = self._client.post("/telemetry", json=batch)
@@ -71,7 +80,10 @@ class ApiSender:
                 self.totals.update(response.json())
                 return
             except (httpx.TransportError, httpx.HTTPStatusError) as exc:
-                if attempt == SEND_RETRIES:
+                is_client_error = (
+                    isinstance(exc, httpx.HTTPStatusError) and exc.response.is_client_error
+                )
+                if is_client_error or attempt == SEND_RETRIES:
                     raise
                 wait_s = 2**attempt
                 log.warning("Envío fallido (%s); reintento en %d s", exc, wait_s)

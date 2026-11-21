@@ -44,6 +44,11 @@ select = ["E", "F", "I", "B", "UP", "SIM"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 markers = ["integration: requiere PostGIS corriendo (docker compose up -d)"]
+# Starlette anuncia que su cliente de pruebas dejará httpx por un sucesor. Es un aviso de una
+# dependencia, no de este código: se silencia solo ese mensaje y cualquier otro aviso se ve.
+filterwarnings = [
+    "ignore:Using `httpx` with `starlette.testclient` is deprecated:starlette.exceptions.StarletteDeprecationWarning",
+]
 
 [tool.coverage.run]
 source = ["fleet_pipeline"]
