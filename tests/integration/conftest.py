@@ -4,6 +4,7 @@ Si la base no responde, los tests de integración se omiten con un aviso en luga
 para que los unitarios se puedan correr en cualquier máquina.
 """
 
+import os
 from collections.abc import Iterator
 from datetime import UTC, date, datetime, timedelta
 from zoneinfo import ZoneInfo
@@ -37,6 +38,9 @@ def conninfo(settings: Settings) -> str:
         with psycopg.connect(settings.conninfo, connect_timeout=3):
             pass
     except psycopg.OperationalError:
+        # En CI (GitHub define CI=true) saltarse estos tests daría un verde falso: ahí fallan.
+        if os.environ.get("CI"):
+            raise
         pytest.skip("PostGIS no está disponible: ejecuta `docker compose up -d`")
     return settings.conninfo
 

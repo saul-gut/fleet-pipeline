@@ -1,7 +1,6 @@
 services:
   db:
     image: postgis/postgis:16-3.5
-    container_name: fleet-db
     # Solo las variables que necesita la base; las API keys no entran al contenedor.
     environment:
       POSTGRES_USER: ${POSTGRES_USER}

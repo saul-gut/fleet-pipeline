@@ -47,3 +47,10 @@ markers = ["integration: requiere PostGIS corriendo (docker compose up -d)"]
 
 [tool.coverage.run]
 source = ["fleet_pipeline"]
+
+[tool.coverage.report]
+# La lógica crítica (calidad, reglas de Plata, seguridad, ingesta) está al 100 %; los puntos de
+# entrada de línea de comandos y el envío por red del simulador se prueban de punta a punta.
+fail_under = 80
+show_missing = true
+skip_covered = true
