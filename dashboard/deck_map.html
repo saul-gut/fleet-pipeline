@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- Mapa del dashboard (D-21): deck.gl en el navegador, versión fijada. -->
+<script src="https://cdn.jsdelivr.net/npm/deck.gl@9.3.11/dist.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+<style>
+  html, body { margin:0; height:100%; background:#07090d; overflow:hidden;
+    font-family:'Inter', system-ui, sans-serif; }
+  #map { position:absolute; inset:0; }
+  .legend { position:absolute; left:14px; bottom:14px; z-index:2; max-width:290px;
+    padding:12px 14px; border-radius:14px; color:#c3c2b7; font-size:11.5px;
+    background:rgba(13,16,22,.78); border:1px solid rgba(255,255,255,.08);
+    backdrop-filter: blur(10px); box-shadow:0 10px 30px -12px rgba(0,0,0,.8); }
+  .legend h5 { margin:0 0 6px; font-size:10px; letter-spacing:.12em; text-transform:uppercase;
+    color:#898781; font-weight:600; }
+  .legend .row { display:flex; align-items:center; gap:7px; margin:3px 0; }
+  .legend .sw { width:12px; height:12px; border-radius:3px; flex:none; }
+  .legend .line { width:16px; height:3px; border-radius:2px; flex:none; }
+  .legend .ramp { height:8px; border-radius:999px; margin:4px 0 2px; }
+  .legend .ends { display:flex; justify-content:space-between; color:#898781; font-size:10px; }
+  .legend section + section { margin-top:9px; padding-top:8px; border-top:1px solid rgba(255,255,255,.06); }
+  .chip-top { position:absolute; top:14px; left:14px; z-index:2; display:flex; gap:8px; }
+  .tag { padding:6px 11px; border-radius:999px; font-size:11.5px; font-weight:600; color:#f0efec;
+    background:rgba(13,16,22,.78); border:1px solid rgba(255,255,255,.08); backdrop-filter:blur(10px); }
+  .tag .live { display:inline-block; width:7px; height:7px; border-radius:50%; background:#3987e5;
+    margin-right:6px; box-shadow:0 0 10px #3987e5; animation: blink 1.6s ease-in-out infinite; }
+  @keyframes blink { 50% { opacity:.25; } }
+  .attribution { position:absolute; right:10px; bottom:6px; z-index:2; font-size:10px; color:#898781; }
+  .attribution a { color:#898781; }
+</style>
+</head>
+<body>
+<div id="map"></div>
+<div class="chip-top" id="chips"></div>
+<div class="legend" id="legend"></div>
+<div class="attribution">© <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a> · © <a href="https://carto.com/attributions" target="_blank">CARTO</a></div>
+<script>
+const DATA = __DATA__;
+
+const {Deck, TileLayer, BitmapLayer, GeoJsonLayer, PathLayer, ScatterplotLayer,
+       HeatmapLayer, HexagonLayer, TripsLayer} = deck;
+
+const rgb = (hex, a = 255) => {
+  const h = hex.replace('#', '');
+  return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16), a];
+};
+const SPECIAL = new Set(['school', 'high_risk', 'road_hazard']);
+const zoneColor = (z, a) => rgb(DATA.zones.colors[z] || '#898781', a);
+const sevColor = (s, a) => rgb(DATA.severity.colors[s] || '#3987e5', a);
+const fmtTime = (iso) => new Date(iso).toLocaleTimeString('es-CO', {hour: '2-digit', minute: '2-digit', second: '2-digit'});
+// Todo texto que viene de la base se escapa antes de insertarlo en un tooltip (defensa en profundidad).
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
+
+// --- Datos que no cambian entre cuadros (mismas referencias = sin recálculo en deck.gl) ---
+const specialZones = DATA.geofences.filter(f => SPECIAL.has(f.properties.zone_type));
+const contextZones = DATA.geofences.filter(f => !SPECIAL.has(f.properties.zone_type));
+const heatRamp = DATA.heatRamp.map(c => rgb(c).slice(0, 3));
+const trip = DATA.route && DATA.route.trip.path.length ? [DATA.route.trip] : [];
+const tripEnd = trip.length ? trip[0].timestamps[trip[0].timestamps.length - 1] : 0;
+
+// --- Capas ---
+const basemap = new TileLayer({
+  id: 'basemap',
+  // Teselas públicas de CARTO (sin clave): los subdominios a-d reparten la carga.
+  data: ['a', 'b', 'c', 'd'].map(s => `https://${s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png`),
+  minZoom: 0, maxZoom: 19, tileSize: 256,
+  renderSubLayers: props => {
+    const [[west, south], [east, north]] = props.tile.boundingBox;
+    return new BitmapLayer(props, {data: null, image: props.data, bounds: [west, south, east, north]});
+  }
+});
+
+function geofenceLayers() {
+  if (!DATA.show.geofences) return [];
+  return [
+    // Contexto: perímetros y autopista, solo contorno fino.
+    new GeoJsonLayer({
+      id: 'context-zones', data: contextZones, filled: false, stroked: true,
+      getLineColor: f => zoneColor(f.properties.zone_type, 150), lineWidthMinPixels: 1,
+    }),
+    // Halo: contorno ancho y translúcido bajo el contorno nítido = efecto de brillo.
+    new GeoJsonLayer({
+      id: 'zones-halo', data: specialZones, filled: false, stroked: true,
+      getLineColor: f => zoneColor(f.properties.zone_type, 60), lineWidthMinPixels: 7,
+    }),
+    new GeoJsonLayer({
+      id: 'special-zones', data: specialZones, filled: true, stroked: true, pickable: true,
+      getFillColor: f => zoneColor(f.properties.zone_type, 46),
+      getLineColor: f => zoneColor(f.properties.zone_type, 230), lineWidthMinPixels: 1.4,
+      autoHighlight: true, highlightColor: [255, 255, 255, 30],
+    }),
+  ];
+}
+
+function infractionLayers() {
+  if (!DATA.show.infractions || !DATA.infractions.length) return [];
+  if (DATA.mode === 'hexagon') {
+    return [new HexagonLayer({
+      id: 'hexagons', data: DATA.infractions, getPosition: d => d.p,
+      radius: 220, elevationScale: 6, extruded: true, coverage: 0.88,
+      colorRange: heatRamp, upperPercentile: 99, pickable: true,
+      material: {ambient: 0.6, diffuse: 0.6, shininess: 40},
+    })];
+  }
+  return [new HeatmapLayer({
+    id: 'heatmap', data: DATA.infractions, getPosition: d => d.p,
+    getWeight: d => Math.max(1, d.w), radiusPixels: 38, intensity: 1.2, threshold: 0.04,
+    colorRange: heatRamp,
+  })];
+}
+
+function routeLayers(t) {
+  if (!DATA.show.route || !DATA.route) return [];
+  const segs = DATA.route.segments;
+  return [
+    // Halo de la ruta.
+    new PathLayer({
+      id: 'route-halo', data: segs, getPath: d => d.path,
+      getColor: d => rgb(d.color, 70), widthMinPixels: 9, capRounded: true, jointRounded: true,
+    }),
+    new PathLayer({
+      id: 'route', data: segs, getPath: d => d.path, pickable: true,
+      getColor: d => rgb(d.color, 235), widthMinPixels: 2.6, capRounded: true, jointRounded: true,
+    }),
+    // Estela animada: el vehículo recorre su día en ~25 segundos.
+    new TripsLayer({
+      id: 'trip', data: trip, getPath: d => d.path, getTimestamps: d => d.timestamps,
+      getColor: [156, 216, 255], opacity: 1, widthMinPixels: 4.5, capRounded: true, jointRounded: true,
+      trailLength: tripEnd / 9, currentTime: t * tripEnd, fadeTrail: true,
+    }),
+  ];
+}
+
+function alertLayers(t) {
+  if (!DATA.show.alerts || !DATA.alerts.length) return [];
+  return [
+    // Anillo que se expande y se desvanece: cada alerta "late" con un desfase propio.
+    new ScatterplotLayer({
+      id: 'alert-pulse', data: DATA.alerts, getPosition: d => d.p,
+      stroked: true, filled: false, radiusUnits: 'pixels', lineWidthUnits: 'pixels',
+      getRadius: d => 6 + 22 * ((t * 6 + d.phase) % 1),
+      getLineColor: d => sevColor(d.sev, Math.round(220 * (1 - ((t * 6 + d.phase) % 1)))),
+      getLineWidth: 2,
+      updateTriggers: {getRadius: t, getLineColor: t},
+    }),
+    new ScatterplotLayer({
+      id: 'alerts', data: DATA.alerts, getPosition: d => d.p, pickable: true,
+      radiusUnits: 'pixels', getRadius: 5, getFillColor: d => sevColor(d.sev, 255),
+      stroked: true, getLineColor: [7, 9, 13, 255], lineWidthUnits: 'pixels', getLineWidth: 1.5,
+    }),
+  ];
+}
+
+// --- Tooltips ---
+function tooltip({object, layer}) {
+  if (!object) return null;
+  const box = html => ({html, style: {
+    background: 'rgba(13,16,22,.92)', color: '#f0efec', border: '1px solid rgba(255,255,255,.1)',
+    borderRadius: '10px', padding: '9px 11px', fontSize: '12px', fontFamily: 'Inter, sans-serif',
+    boxShadow: '0 10px 30px -10px rgba(0,0,0,.9)', maxWidth: '260px'}});
+  if (layer.id === 'special-zones') {
+    const p = object.properties;
+    return box(`<b>${esc(p.name)}</b><br>${DATA.zones.labels[p.zone_type]} · límite <b>${p.speed_limit_kmh} km/h</b>`
+      + `<br><span style="color:#898781">${p.limit_source === 'law' ? 'Ley 2251 de 2022' : 'Política de la flota'}</span>`);
+  }
+  if (layer.id === 'route') {
+    const over = object.severity ? ` · <span style="color:${DATA.severity.colors[object.severity]}">${DATA.severity.labels[object.severity]}</span>` : '';
+    return box(`<b>${fmtTime(object.ts)}</b>${over}<br>${object.speed.toFixed(0)} km/h · límite ${object.limit} km/h`
+      + `<br><span style="color:#898781">${DATA.zones.labels[object.zone] || 'Sin geocerca'}</span>`);
+  }
+  if (layer.id === 'alerts') {
+    return box(`<b>${object.type}</b> · <span style="color:${DATA.severity.colors[object.sev]}">${DATA.severity.labels[object.sev]}</span>`
+      + `<br><span style="font-family:'JetBrains Mono'">${esc(object.label)}</span> · ${fmtTime(object.ts)}`
+      + `<br>máx. ${object.speed.toFixed(0)} km/h en zona de ${object.limit} km/h`);
+  }
+  if (layer.id === 'hexagons') {
+    return box(`<b>${object.count}</b> lecturas en infracción`);
+  }
+  return null;
+}
+
+// --- Leyenda y etiquetas ---
+function renderLegend() {
+  const z = DATA.zones, s = DATA.severity;
+  const zoneRows = ['school', 'high_risk', 'road_hazard'].map(k =>
+    `<div class="row"><span class="sw" style="background:${z.colors[k]}55;border:1px solid ${z.colors[k]}"></span>${z.labels[k]}</div>`).join('');
+  const ctxRows = ['urban', 'highway'].map(k =>
+    `<div class="row"><span class="line" style="background:${z.colors[k]}"></span>${z.labels[k]}</div>`).join('');
+  const sevRows = ['minor', 'moderate', 'severe'].map(k =>
+    `<div class="row"><span class="line" style="background:${s.colors[k]};box-shadow:0 0 6px ${s.colors[k]}"></span>Exceso ${s.labels[k].toLowerCase()}</div>`).join('');
+  let html = `<section><h5>Geocercas</h5>${zoneRows}${ctxRows}</section>`;
+  if (DATA.show.route && DATA.route) {
+    html += `<section><h5>Ruta · ${esc(DATA.route.label)}</h5>`
+      + `<div class="row"><span class="line" style="background:#3987e5"></span>Dentro del límite</div>${sevRows}</section>`;
+  }
+  if (DATA.show.infractions) {
+    html += `<section><h5>${DATA.mode === 'hexagon' ? 'Infracciones (hexágonos 3D)' : 'Densidad de infracciones'}</h5>`
+      + `<div class="ramp" style="background:linear-gradient(90deg,${DATA.heatRamp.join(',')})"></div>`
+      + `<div class="ends"><span>baja</span><span>alta</span></div></section>`;
+  }
+  document.getElementById('legend').innerHTML = html;
+  document.getElementById('chips').innerHTML =
+    `<span class="tag"><span class="live"></span>${esc(DATA.title)}</span>`;
+}
+
+// --- Animación ---
+const deckgl = new Deck({
+  parent: document.getElementById('map'),
+  initialViewState: DATA.view,
+  controller: true,
+  getTooltip: tooltip,
+  layers: [],
+});
+
+const LOOP_MS = 25000;
+const started = performance.now();
+function frame(now) {
+  const t = ((now - started) % LOOP_MS) / LOOP_MS;
+  deckgl.setProps({layers: [basemap, ...geofenceLayers(), ...infractionLayers(),
+                            ...routeLayers(t), ...alertLayers(t)]});
+  requestAnimationFrame(frame);
+}
+renderLegend();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

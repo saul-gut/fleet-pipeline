@@ -54,6 +54,8 @@ def _delete_test_data(conn: psycopg.Connection) -> None:
     conn.execute("DELETE FROM bronze.telemetry_raw WHERE vehicle_id = ANY(%s)", (ids,))
     conn.execute("DELETE FROM bronze.telemetry_rejected WHERE vehicle_id = ANY(%s)", (ids,))
     conn.execute("DELETE FROM bronze.vehicles WHERE vehicle_id = ANY(%s)", (ids,))
+    # La vista materializada no se actualiza sola: sin esto quedan filas de los tests.
+    conn.execute("REFRESH MATERIALIZED VIEW gold.driver_score")
 
 
 @pytest.fixture
