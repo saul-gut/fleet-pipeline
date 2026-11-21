@@ -38,8 +38,11 @@ STEPS = [
     {
         "element": ".st-key-tour-period",
         "popover": {
-            "title": "2 · Periodo",
-            "description": "Rango de días a analizar. KPIs, mapa, ranking y alertas se recalculan.",
+            "title": "2 · Periodo y ciudad",
+            "description": (
+                "Rango de días y ciudades (Bogotá, Medellín y el corredor). Todo el tablero "
+                "responde: KPIs, mapa, ranking y alertas."
+            ),
             "side": "right",
         },
     },
@@ -48,8 +51,9 @@ STEPS = [
         "popover": {
             "title": "3 · Vehículo",
             "description": (
-                "Su ruta del último día se dibuja en el mapa con flechas de sentido y una estela "
-                "animada. Por defecto aparece el de menor Driver Score."
+                "Con <b>Todos los vehículos</b> ves la flota completa en movimiento. 💡 Elige "
+                "uno para ver su ruta en detalle: tramos por severidad, flechas de sentido y una "
+                "estela animada."
             ),
             "side": "right",
         },
@@ -57,11 +61,11 @@ STEPS = [
     {
         "element": ".st-key-tour-filters",
         "popover": {
-            "title": "4 · Infracciones y capas",
+            "title": "4 · Infracciones",
             "description": (
-                "Combina los tipos de infracción (excesos por tipo de vía y geocercas: escolar, "
-                "alta siniestralidad, vía deteriorada) y su severidad. Enciende o apaga capas y "
-                "cambia el heatmap por hexágonos 3D."
+                "Combina tipos (excesos por tipo de vía y geocercas escolar, alta siniestralidad "
+                "o vía deteriorada) y severidad. Pulsa <b>Aplicar filtros</b>: todo se recalcula "
+                "de una sola vez."
             ),
             "side": "right",
         },
@@ -82,10 +86,9 @@ STEPS = [
         "popover": {
             "title": "6 · Mapa",
             "description": (
-                "Geocercas achuradas (escolar, alta siniestralidad, vía deteriorada), ruta por "
-                "severidad y heatmap de infracciones. Usa los botones de arriba a la derecha para "
-                "volar entre la ruta, Bogotá, Medellín y el corredor. Pasa el mouse para ver "
-                "detalles."
+                "Geocercas achuradas, recorridos y heatmap de infracciones. El mapa se encuadra "
+                "solo en lo filtrado. Las capas se encienden arriba a la derecha, al instante. "
+                "Pasa el mouse para ver detalles."
             ),
             "side": "top",
         },

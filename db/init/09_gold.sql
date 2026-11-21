@@ -159,6 +159,23 @@ AS $$
            END;
 $$;
 
+-- Directorio de vehículos para BI: clave, ID enmascarado, tipo y región de operación según su
+-- ruta asignada. Permite filtrar por ciudad sin dar acceso a Bronce ni a Plata.
+CREATE OR REPLACE VIEW gold.vehicle_directory AS
+SELECT
+    v.vehicle_key,
+    analytics.mask_vehicle_id(v.vehicle_id) AS vehicle_id_masked,
+    v.vehicle_type,
+    vr.route_id,
+    CASE r.kind
+        WHEN 'urban_bogota' THEN 'bogota'
+        WHEN 'urban_medellin' THEN 'medellin'
+        WHEN 'interurban' THEN 'corridor'
+    END AS region
+FROM bronze.vehicles AS v
+LEFT JOIN silver.vehicle_routes AS vr USING (vehicle_id)
+LEFT JOIN silver.routes AS r USING (route_id);
+
 -- Alertas de combustible para BI, con el ID ya enmascarado. Es una vista: se ejecuta con
 -- los permisos de su dueño, así que el analista la lee sin acceso a Plata ni a Bronce.
 CREATE OR REPLACE VIEW gold.fuel_alerts AS

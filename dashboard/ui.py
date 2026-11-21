@@ -117,17 +117,19 @@ def kpi_cards(k: dict[str, Any]) -> str:
     return f'<div class="kpis">{html}</div>'
 
 
-def ranking_panel(rows: list[dict[str, Any]], limit: int = 12) -> str:
-    title = "Driver Score · primero los de mayor riesgo"
+def ranking_panel(rows: list[dict[str, Any]]) -> str:
+    """Todos los vehículos del alcance, de mayor a menor riesgo, con desplazamiento interno."""
+    count = f"{len(rows)} vehículo" + ("" if len(rows) == 1 else "s")
+    title = f"Driver Score · {count}, primero los de mayor riesgo"
     subtitle = (
         "0–100 · penalización por cada 100 km; las infracciones en zonas especiales pesan el doble"
     )
     if not rows:
-        return _panel(title, subtitle, '<div class="empty">Sin datos.</div>')
+        return _panel(title, subtitle, '<div class="empty">Sin vehículos en el filtro.</div>')
     # En un centro de control lo urgente va primero: de menor a mayor puntaje.
     riskiest = sorted(rows, key=lambda r: r["score"] if r["score"] is not None else 101)
     body = ""
-    for pos, r in enumerate(riskiest[:limit], 1):
+    for pos, r in enumerate(riskiest, 1):
         score = float(r["score"]) if r["score"] is not None else None
         detail = f"{_fmt(r['km'])} km · {r['speeding']} excesos · {r['geofence']} en geocercas"
         name = f"{escape(str(r['label']))}<small>{escape(r['vehicle_type'])}</small>"
@@ -139,7 +141,7 @@ def ranking_panel(rows: list[dict[str, Any]], limit: int = 12) -> str:
           </span></span>
           <span class="score">{_fmt(score, 1)}</span>
         </div>"""
-    return _panel(title, subtitle, body)
+    return _panel(title, subtitle, f'<div class="scroll">{body}</div>')
 
 
 def _panel(title: str, subtitle: str, body: str) -> str:
@@ -147,7 +149,7 @@ def _panel(title: str, subtitle: str, body: str) -> str:
 
 
 def alerts_panel(
-    rows: list[dict[str, Any]], fuel_rows: list[dict[str, Any]], limit: int = 12
+    rows: list[dict[str, Any]], fuel_rows: list[dict[str, Any]], limit: int = 50
 ) -> str:
     items = [
         (
@@ -171,7 +173,7 @@ def alerts_panel(
         for r in fuel_rows
     ]
     items.sort(key=lambda item: item[0], reverse=True)
-    title = "Alertas recientes"
+    title = f"Alertas recientes · las {min(len(items), limit)} más recientes"
     subtitle = "Episodios de exceso, infracciones de geocerca y combustible insuficiente"
     if not items:
         return _panel(title, subtitle, '<div class="empty">Sin alertas.</div>')
@@ -190,7 +192,7 @@ def alerts_panel(
     table = (
         f'<table class="alerts"><thead><tr>{header}</tr></thead><tbody>{rows_html}</tbody></table>'
     )
-    return _panel(title, subtitle, table)
+    return _panel(title, subtitle, f'<div class="scroll">{table}</div>')
 
 
 def timings(items: dict[str, float]) -> str:
@@ -269,23 +271,46 @@ def _arrows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return list(arrows.values())
 
 
+def fleet_payload(rows: list[dict[str, Any]], labels: dict[int, str]) -> dict[str, Any] | None:
+    """Recorridos simplificados de toda la flota, con tiempos relativos al mismo inicio para
+    animar a todos los vehículos a la vez."""
+    if not rows:
+        return None
+    t0 = min(r["ts"] for r in rows)
+    by_vehicle: dict[int, list[dict[str, Any]]] = {}
+    for r in rows:
+        by_vehicle.setdefault(r["vehicle_key"], []).append(r)
+    vehicles = [
+        {
+            "key": key,
+            "label": labels.get(key, str(key)),
+            "path": [[round(r["lon"], 5), round(r["lat"], 5)] for r in points],
+            "timestamps": [(r["ts"] - t0).total_seconds() for r in points],
+        }
+        for key, points in by_vehicle.items()
+        if len(points) >= 2
+    ]
+    end = max((v["timestamps"][-1] for v in vehicles), default=0)
+    return {"vehicles": vehicles, "end": end}
+
+
 def map_html(
     *,
-    views: dict[str, dict[str, float]],
     mode: str,
-    show: dict[str, bool],
     geofences: list[dict[str, Any]],
+    fleet: dict[str, Any] | None,
     route: dict[str, Any] | None,
     infractions: list[dict[str, Any]],
     alerts: list[dict[str, Any]],
     title: str,
 ) -> str:
+    """HTML del mapa. `fleet` = toda la flota (vista general); `route` = un vehículo en detalle.
+    Las capas se encienden y apagan dentro del mapa, sin volver a ejecutar Streamlit."""
     rng = random.Random(7)  # desfase estable del pulso de cada alerta
     data = {
-        "views": views,
         "mode": mode,
-        "show": show,
         "title": title,
+        "fleet": fleet,
         "zones": {
             "colors": theme.ZONE_COLORS,
             "labels": theme.ZONE_LABELS,

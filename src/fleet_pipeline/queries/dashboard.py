@@ -1,9 +1,11 @@
-"""Consultas del dashboard (D-20). Leen solo Oro y las geocercas, nunca Bronce.
+"""Consultas del dashboard (D-20, D-23). Leen solo Oro y las geocercas, nunca Bronce.
 
 Cada consulta corre dentro de una transacción que asume el rol del usuario en PostgreSQL
 (`SET LOCAL ROLE`): el enmascaramiento lo aplica la base, no la interfaz. Para el admin, el
 ID real sale de unir la clave sustituta con bronze.vehicles, algo que solo su rol puede hacer.
-Cada resultado trae cuántos milisegundos tardó, para mostrarlo en el tablero.
+
+Todas las consultas reciben el mismo `Scope` (periodo + vehículos), así KPIs, ranking, mapa y
+alertas responden juntos a los filtros. Cada resultado trae cuántos milisegundos tardó.
 """
 
 from __future__ import annotations
@@ -29,6 +31,12 @@ _JOIN_REAL_ID = {
     Role.ADMIN: sql.SQL("LEFT JOIN bronze.vehicles AS v ON v.vehicle_key = s.vehicle_key"),
     Role.ANALYST: sql.SQL(""),
 }
+_IN_SCOPE = sql.SQL("s.vehicle_key = ANY(%(vehicle_keys)s)")
+# Categoría de cada lectura: "<tipo de alerta>:<zona aplicada>" ("none" = sin geocerca).
+_ALERT_FILTER = sql.SQL(
+    "(s.alert_type || ':' || coalesce(s.zone_type, 'none')) = ANY(%(categories)s) "
+    "AND s.severity = ANY(%(severities)s)"
+)
 
 
 def _day_range(column: str) -> sql.Composed:
@@ -41,6 +49,37 @@ def _day_range(column: str) -> sql.Composed:
 
 
 _TS_RANGE = _day_range("s.ts")
+
+
+@dataclass(frozen=True)
+class Scope:
+    """Periodo y vehículos que el usuario está mirando."""
+
+    date_from: date
+    date_to: date
+    vehicle_keys: list[int]
+
+    def params(self) -> dict[str, Any]:
+        return {
+            "date_from": self.date_from,
+            "date_to": self.date_to,
+            "vehicle_keys": self.vehicle_keys,
+        }
+
+
+@dataclass(frozen=True)
+class AlertFilter:
+    """Qué infracciones mostrar.
+
+    `categories` combina tipo de alerta y zona aplicada, p. ej. "SPEEDING:urban" o
+    "GEOFENCE_VIOLATION:school". `severities` usa minor, moderate y severe.
+    """
+
+    categories: list[str]
+    severities: list[str]
+
+    def params(self) -> dict[str, Any]:
+        return {"categories": self.categories, "severities": self.severities}
 
 
 @dataclass(frozen=True)
@@ -70,17 +109,21 @@ def date_bounds(conn: psycopg.Connection, role: Role) -> QueryResult:
 
 
 def vehicles(conn: psycopg.Connection, role: Role) -> QueryResult:
+    """Directorio de la flota: clave, etiqueta según el rol, tipo y región de operación."""
     query = sql.SQL(
         """
-        SELECT DISTINCT s.vehicle_key, {label} AS label, s.vehicle_type
-        FROM gold.driver_score AS s {join}
+        SELECT s.vehicle_key, {label} AS label, s.vehicle_type, s.region
+        FROM gold.vehicle_directory AS s {join}
+        WHERE s.region IS NOT NULL
         ORDER BY s.vehicle_key
         """
     ).format(label=_LABEL[role], join=_JOIN_REAL_ID[role])
     return run(conn, role, query)
 
 
-def kpis(conn: psycopg.Connection, role: Role, date_from: date, date_to: date) -> QueryResult:
+def kpis(
+    conn: psycopg.Connection, role: Role, scope: Scope, alert_filter: AlertFilter
+) -> QueryResult:
     query = sql.SQL(
         """
         WITH events AS (
@@ -89,24 +132,25 @@ def kpis(conn: psycopg.Connection, role: Role, date_from: date, date_to: date) -
                 round((sum(s.step_m) / 1000)::numeric) AS km,
                 round(100.0 * count(*) FILTER (WHERE s.is_over_threshold)
                       / nullif(count(*) FILTER (WHERE s.speed_kmh > 0), 0), 1) AS pct_over,
-                count(DISTINCT s.alert_id) FILTER (WHERE s.alert_type = 'SPEEDING') AS speeding,
                 count(DISTINCT s.alert_id)
-                    FILTER (WHERE s.alert_type = 'GEOFENCE_VIOLATION') AS geofence
+                    FILTER (WHERE s.alert_type = 'SPEEDING' AND {alert_filter}) AS speeding,
+                count(DISTINCT s.alert_id) FILTER (
+                    WHERE s.alert_type = 'GEOFENCE_VIOLATION' AND {alert_filter}) AS geofence
             FROM gold.fleet_events AS s
-            WHERE {ts_range}
+            WHERE {in_scope} AND {ts_range}
         ), scores AS (
-            SELECT gold.score_value(sum(penalty_points), sum(km)::numeric) AS fleet_score,
-                   sum(low_fuel_alerts) AS low_fuel
-            FROM gold.driver_score
-            WHERE event_date BETWEEN %(date_from)s AND %(date_to)s
+            SELECT gold.score_value(sum(s.penalty_points), sum(s.km)::numeric) AS fleet_score,
+                   sum(s.low_fuel_alerts) AS low_fuel
+            FROM gold.driver_score AS s
+            WHERE {in_scope} AND s.event_date BETWEEN %(date_from)s AND %(date_to)s
         )
         SELECT * FROM events, scores
         """
-    ).format(ts_range=_TS_RANGE)
-    return run(conn, role, query, {"date_from": date_from, "date_to": date_to})
+    ).format(alert_filter=_ALERT_FILTER, in_scope=_IN_SCOPE, ts_range=_TS_RANGE)
+    return run(conn, role, query, scope.params() | alert_filter.params())
 
 
-def ranking(conn: psycopg.Connection, role: Role, date_from: date, date_to: date) -> QueryResult:
+def ranking(conn: psycopg.Connection, role: Role, scope: Scope) -> QueryResult:
     """Driver Score del periodo: puntos y km acumulados, misma fórmula que el diario."""
     query = sql.SQL(
         """
@@ -117,54 +161,34 @@ def ranking(conn: psycopg.Connection, role: Role, date_from: date, date_to: date
                sum(s.speeding_severe + s.geofence_severe) AS severe,
                gold.score_value(sum(s.penalty_points), sum(s.km)::numeric) AS score
         FROM gold.driver_score AS s {join}
-        WHERE s.event_date BETWEEN %(date_from)s AND %(date_to)s
+        WHERE {in_scope} AND s.event_date BETWEEN %(date_from)s AND %(date_to)s
         GROUP BY s.vehicle_key, label, s.vehicle_type
-        ORDER BY score DESC NULLS LAST, s.vehicle_key
+        ORDER BY score ASC NULLS LAST, s.vehicle_key
         """
-    ).format(label=_LABEL[role], join=_JOIN_REAL_ID[role])
-    return run(conn, role, query, {"date_from": date_from, "date_to": date_to})
+    ).format(label=_LABEL[role], join=_JOIN_REAL_ID[role], in_scope=_IN_SCOPE)
+    return run(conn, role, query, scope.params())
 
 
-def route(conn: psycopg.Connection, role: Role, vehicle_key: int, day: date) -> QueryResult:
-    """Lecturas de un vehículo en un día, en orden: la ruta y su velocidad tramo a tramo."""
+def routes(
+    conn: psycopg.Connection, role: Role, scope: Scope, sample_every: int = 1
+) -> QueryResult:
+    """Lecturas en orden de los vehículos del alcance. Con `sample_every` > 1 se toma una de
+    cada N (~N × 10 s): suficiente para dibujar la flota completa sin enviar miles de puntos."""
     query = sql.SQL(
         """
-        SELECT s.ts, ST_X(s.geom) AS lon, ST_Y(s.geom) AS lat, s.speed_kmh,
-               s.speed_limit_kmh, s.zone_type, s.geofence_code, s.alert_type, s.severity
+        SELECT s.vehicle_key, s.ts, ST_X(s.geom) AS lon, ST_Y(s.geom) AS lat, s.speed_kmh,
+               s.speed_limit_kmh, s.zone_type, s.severity
         FROM gold.fleet_events AS s
-        WHERE s.vehicle_key = %(vehicle_key)s AND {ts_range}
-        ORDER BY s.ts
+        WHERE {in_scope} AND {ts_range}
+          AND (%(every)s = 1 OR (extract(epoch FROM s.ts)::bigint / 10) %% %(every)s = 0)
+        ORDER BY s.vehicle_key, s.ts
         """
-    ).format(ts_range=_TS_RANGE)
-    return run(conn, role, query, {"vehicle_key": vehicle_key, "date_from": day, "date_to": day})
-
-
-@dataclass(frozen=True)
-class AlertFilter:
-    """Qué infracciones mostrar.
-
-    `categories` combina tipo de alerta y zona aplicada, p. ej. "SPEEDING:urban" o
-    "GEOFENCE_VIOLATION:school" ("none" = fuera de toda geocerca). `severities` usa
-    minor, moderate y severe.
-    """
-
-    categories: list[str]
-    severities: list[str]
-
-
-# Categoría de cada lectura: "<tipo de alerta>:<zona aplicada>".
-_FILTER = sql.SQL(
-    "(s.alert_type || ':' || coalesce(s.zone_type, 'none')) = ANY(%(categories)s) "
-    "AND s.severity = ANY(%(severities)s)"
-)
+    ).format(in_scope=_IN_SCOPE, ts_range=_TS_RANGE)
+    return run(conn, role, query, scope.params() | {"every": sample_every})
 
 
 def infractions(
-    conn: psycopg.Connection,
-    role: Role,
-    date_from: date,
-    date_to: date,
-    alert_filter: AlertFilter,
+    conn: psycopg.Connection, role: Role, scope: Scope, alert_filter: AlertFilter
 ) -> QueryResult:
     """Lecturas que forman parte de una alerta: la materia prima del heatmap."""
     query = sql.SQL(
@@ -172,23 +196,16 @@ def infractions(
         SELECT ST_X(s.geom) AS lon, ST_Y(s.geom) AS lat, s.alert_type, s.severity,
                s.excess_kmh
         FROM gold.fleet_events AS s
-        WHERE s.alert_type IS NOT NULL AND {alert_filter} AND {ts_range}
+        WHERE s.alert_type IS NOT NULL AND {alert_filter} AND {in_scope} AND {ts_range}
         """
-    ).format(alert_filter=_FILTER, ts_range=_TS_RANGE)
-    params = {
-        "categories": alert_filter.categories,
-        "severities": alert_filter.severities,
-        "date_from": date_from,
-        "date_to": date_to,
-    }
-    return run(conn, role, query, params)
+    ).format(alert_filter=_ALERT_FILTER, in_scope=_IN_SCOPE, ts_range=_TS_RANGE)
+    return run(conn, role, query, scope.params() | alert_filter.params())
 
 
 def recent_alerts(
     conn: psycopg.Connection,
     role: Role,
-    date_from: date,
-    date_to: date,
+    scope: Scope,
     alert_filter: AlertFilter,
     limit: int = 50,
 ) -> QueryResult:
@@ -202,39 +219,39 @@ def recent_alerts(
                ST_X(ST_Centroid(ST_Collect(s.geom))) AS lon,
                ST_Y(ST_Centroid(ST_Collect(s.geom))) AS lat
         FROM gold.fleet_events AS s {join}
-        WHERE s.alert_type IS NOT NULL AND {alert_filter} AND {ts_range}
+        WHERE s.alert_type IS NOT NULL AND {alert_filter} AND {in_scope} AND {ts_range}
         GROUP BY s.alert_id, label, s.alert_type, s.severity
         ORDER BY started_at DESC
         LIMIT %(limit)s
         """
-    ).format(label=_LABEL[role], join=_JOIN_REAL_ID[role], alert_filter=_FILTER, ts_range=_TS_RANGE)
-    params = {
-        "categories": alert_filter.categories,
-        "severities": alert_filter.severities,
-        "date_from": date_from,
-        "date_to": date_to,
-        "limit": limit,
-    }
-    return run(conn, role, query, params)
+    ).format(
+        label=_LABEL[role],
+        join=_JOIN_REAL_ID[role],
+        alert_filter=_ALERT_FILTER,
+        in_scope=_IN_SCOPE,
+        ts_range=_TS_RANGE,
+    )
+    return run(conn, role, query, scope.params() | alert_filter.params() | {"limit": limit})
 
 
 def fuel_alerts(
-    conn: psycopg.Connection, role: Role, date_from: date, date_to: date
+    conn: psycopg.Connection, role: Role, scope: Scope, severities: list[str]
 ) -> QueryResult:
     query = sql.SQL(
         """
         SELECT s.alert_id, {label} AS label, s.severity, s.started_at, s.ended_at,
                s.fuel_l, s.fuel_needed_l, s.remaining_km, ST_X(s.geom) AS lon, ST_Y(s.geom) AS lat
         FROM gold.fuel_alerts AS s {join}
-        WHERE {ts_range}
+        WHERE {in_scope} AND s.severity = ANY(%(severities)s) AND {ts_range}
         ORDER BY s.started_at DESC
         """
     ).format(
         label=_LABEL[role],
         join=_JOIN_REAL_ID[role],
+        in_scope=_IN_SCOPE,
         ts_range=_day_range("s.started_at"),
     )
-    return run(conn, role, query, {"date_from": date_from, "date_to": date_to})
+    return run(conn, role, query, scope.params() | {"severities": severities})
 
 
 def geofences(conn: psycopg.Connection, role: Role) -> QueryResult:

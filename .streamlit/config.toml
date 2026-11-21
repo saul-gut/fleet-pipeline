@@ -8,6 +8,8 @@ textColor = "#f0efec"
 
 [server]
 headless = true
+# Solo localhost: no depende de cambios en la red Wi-Fi del computador.
+address = "127.0.0.1"
 
 [browser]
 gatherUsageStats = false

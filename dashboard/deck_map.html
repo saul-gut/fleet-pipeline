@@ -3,51 +3,59 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<!-- Mapa del dashboard (D-21): deck.gl en el navegador, versión fijada. -->
+<!-- Mapa del dashboard (D-21, D-23): deck.gl en el navegador, versión fijada. -->
 <script src="https://cdn.jsdelivr.net/npm/deck.gl@9.3.11/dist.min.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
 <style>
   html, body { margin:0; height:100%; background:#3a3a3a; overflow:hidden;
     font-family:'Inter', system-ui, sans-serif; }
   #map { position:absolute; inset:0; }
-  .glass { background:rgba(13,16,22,.80); border:1px solid rgba(255,255,255,.09);
+  .glass { background:rgba(15,20,28,.82); border:1px solid rgba(255,255,255,.10);
     backdrop-filter: blur(10px); box-shadow:0 10px 30px -12px rgba(0,0,0,.8); }
   .legend { position:absolute; left:14px; bottom:14px; z-index:2; width:220px;
-    padding:12px 14px; border-radius:14px; color:#c3c2b7; font-size:11.5px; }
+    padding:12px 14px; border-radius:14px; color:#d6dbe3; font-size:11.5px; }
   .legend h5 { margin:0 0 6px; font-size:10px; letter-spacing:.12em; text-transform:uppercase;
-    color:#898781; font-weight:600; }
+    color:#9aa3b2; font-weight:600; }
   .legend .row { display:flex; align-items:center; gap:8px; margin:4px 0; }
   .legend .sw { width:14px; height:14px; border-radius:3px; flex:none; }
   .legend .line { width:18px; height:3px; border-radius:2px; flex:none; }
   .legend .dash { width:18px; height:0; border-top:3px dashed; flex:none; }
   .legend .ramp { height:8px; border-radius:999px; margin:4px 0 2px; }
-  .legend .ends { display:flex; justify-content:space-between; color:#898781; font-size:10px; }
-  .legend section + section { margin-top:9px; padding-top:8px; border-top:1px solid rgba(255,255,255,.06); }
+  .legend .ends { display:flex; justify-content:space-between; color:#9aa3b2; font-size:10px; }
+  .legend section + section { margin-top:9px; padding-top:8px; border-top:1px solid rgba(255,255,255,.07); }
   .top-left { position:absolute; top:14px; left:14px; z-index:2; }
   .tag { padding:7px 12px; border-radius:999px; font-size:11.5px; font-weight:600; color:#f0efec; display:inline-block; }
-  .tag .live { display:inline-block; width:7px; height:7px; border-radius:50%; background:#3987e5;
-    margin-right:7px; box-shadow:0 0 10px #3987e5; animation: blink 1.6s ease-in-out infinite; }
+  .tag .live { display:inline-block; width:7px; height:7px; border-radius:50%; background:#22c55e;
+    margin-right:7px; box-shadow:0 0 10px #22c55e; animation: blink 1.6s ease-in-out infinite; }
   @keyframes blink { 50% { opacity:.25; } }
-  .nav { position:absolute; top:14px; right:14px; z-index:2; display:flex; gap:4px; padding:4px; border-radius:12px; }
-  .nav button { all:unset; cursor:pointer; padding:7px 12px; border-radius:9px; font-size:12px; font-weight:600;
-    color:#c3c2b7; transition: background .2s, color .2s, box-shadow .2s; }
-  .nav button:hover { background:rgba(57,135,229,.16); color:#f0efec; }
-  .nav button.active { background:rgba(57,135,229,.28); color:#fff; box-shadow:0 0 16px rgba(57,135,229,.45); }
+  .layers { position:absolute; top:14px; right:14px; z-index:2; padding:10px 12px; border-radius:14px;
+    color:#eef2f7; font-size:12px; width:178px; }
+  .layers h5 { margin:0 0 6px; font-size:10px; letter-spacing:.12em; text-transform:uppercase;
+    color:#9aa3b2; font-weight:600; }
+  .layers label { display:flex; align-items:center; gap:8px; padding:3px 0; cursor:pointer; user-select:none; }
+  .layers input { accent-color:#22c55e; width:14px; height:14px; cursor:pointer; }
+  .seg { display:flex; margin-top:8px; border-radius:9px; overflow:hidden; border:1px solid rgba(255,255,255,.14); }
+  .seg button, .fit { all:unset; cursor:pointer; flex:1; text-align:center; padding:6px 0; font-size:11.5px;
+    font-weight:600; color:#c8d0dc; transition: background .2s, color .2s; }
+  .seg button.active { background:rgba(34,197,94,.28); color:#fff; }
+  .fit { display:block; margin-top:8px; border-radius:9px; border:1px solid rgba(255,255,255,.14); }
+  .fit:hover, .seg button:hover { background:rgba(34,197,94,.16); color:#fff; }
   .loader { position:absolute; left:50%; top:62px; transform:translateX(-50%); z-index:3; width:260px;
-    padding:10px 14px 12px; border-radius:12px; color:#c3c2b7; font-size:11.5px;
+    padding:10px 14px 12px; border-radius:12px; color:#d6dbe3; font-size:11.5px;
     opacity:0; transition: opacity .35s ease; pointer-events:none; }
   .loader.on { opacity:1; }
   .loader .track { height:4px; border-radius:999px; background:rgba(255,255,255,.08); margin-top:7px; overflow:hidden; }
-  .loader .fill { height:100%; width:0; border-radius:999px; background:linear-gradient(90deg,#3987e5,#9cc7ff);
-    box-shadow:0 0 12px #3987e5; transition: width .25s ease; }
-  .attribution { position:absolute; right:10px; bottom:6px; z-index:2; font-size:10px; color:#898781; }
-  .attribution a { color:#898781; }
+  .loader .fill { height:100%; width:0; border-radius:999px; background:linear-gradient(90deg,#22c55e,#86efac);
+    box-shadow:0 0 12px #22c55e; transition: width .25s ease; }
+  .attribution { position:absolute; right:10px; bottom:6px; z-index:2; font-size:10px; color:#c3c8d0;
+    text-shadow:0 1px 2px #000; }
+  .attribution a { color:#c3c8d0; }
 </style>
 </head>
 <body>
 <div id="map"></div>
 <div class="top-left"><span class="tag glass" id="title"></span></div>
-<div class="nav glass" id="nav"></div>
+<div class="layers glass" id="layers"></div>
 <div class="loader glass" id="loader"><span id="loader-text">Cargando mapa base…</span>
   <div class="track"><div class="fill" id="loader-fill"></div></div></div>
 <div class="legend glass" id="legend"></div>
@@ -66,9 +74,13 @@ const rgb = (hex, a = 255) => {
 const SPECIAL = new Set(['school', 'high_risk', 'road_hazard']);
 const zoneColor = (z, a) => rgb(DATA.zones.colors[z] || '#898781', a);
 const sevColor = (s, a) => rgb(DATA.severity.colors[s] || '#3987e5', a);
-const fmtTime = (iso) => new Date(iso).toLocaleTimeString('es-CO', {hour: '2-digit', minute: '2-digit', second: '2-digit'});
-// Todo texto que viene de la base se escapa antes de insertarlo en un tooltip (defensa en profundidad).
+const fmtTime = (iso) => new Date(iso).toLocaleString('es-CO', {day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'});
+// Todo texto que viene de la base se escapa antes de insertarlo en el HTML (defensa en profundidad).
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
+
+// Estado de las capas: se cambia dentro del mapa, sin volver a ejecutar Streamlit.
+const show = {geofences: true, routes: true, infractions: true, alerts: true};
+let mode = DATA.mode;
 
 // --- Patrones de achurado (codificación secundaria de cada zona) ---------------------------
 const PATTERN_SIZE = 32;
@@ -87,8 +99,8 @@ function patternAtlas() {
     }
     g.restore();
   };
-  lines(0, 1);                                         // diag: 45°
-  lines(PATTERN_SIZE, -1);                             // anti: 135°
+  lines(0, 1);                                              // diag: 45°
+  lines(PATTERN_SIZE, -1);                                  // anti: 135°
   lines(PATTERN_SIZE * 2, 1); lines(PATTERN_SIZE * 2, -1);  // cross: cuadriculado
   return c.toDataURL();
 }
@@ -101,14 +113,17 @@ const PATTERN_MAPPING = {
 const ARROW_ICON = 'data:image/svg+xml;base64,' + btoa(
   '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">'
   + '<path d="M32 6 L54 50 L32 38 L10 50 Z" fill="#fff"/></svg>');
+const ARROW_MAPPING = {arrow: {x: 0, y: 0, width: 64, height: 64, mask: true}};
 
 // --- Datos que no cambian entre cuadros (mismas referencias = sin recálculo en deck.gl) ---
 const specialZones = DATA.geofences.filter(f => SPECIAL.has(f.properties.zone_type));
 const contextZones = DATA.geofences.filter(f => !SPECIAL.has(f.properties.zone_type));
 const heatRamp = DATA.heatRamp.map(c => rgb(c).slice(0, 3));
-const route = DATA.show.route ? DATA.route : null;
-const trip = route && route.trip.path.length ? [route.trip] : [];
-const tripEnd = trip.length ? trip[0].timestamps[trip[0].timestamps.length - 1] : 0;
+const route = DATA.route;                     // un vehículo en detalle
+const fleet = route ? null : DATA.fleet;      // toda la flota (vista general)
+const detailTrip = route && route.trip.path.length ? [route.trip] : [];
+const tripData = route ? detailTrip : (fleet ? fleet.vehicles : []);
+const tripEnd = route ? (detailTrip.length ? detailTrip[0].timestamps.at(-1) : 0) : (fleet ? fleet.end : 0);
 
 // --- Carga de teselas con avance real ------------------------------------------------------
 const loader = {inflight: 0, done: 0, hideTimer: null};
@@ -131,43 +146,37 @@ function loadTile({url, signal}) {
     .finally(() => { loader.inflight--; loader.done++; updateLoader(); });
 }
 
-// Mapa base: Esri World Dark Gray Canvas (D-22), sin clave, con atribución.
-// Dos capas: el fondo (teñido hacia el azul noche del tablero) y las etiquetas.
+// Mapa base: Esri World Dark Gray Canvas (D-22) en su gris original, sin clave, con atribución.
 const ESRI = 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas';
-const esriLayer = (id, service, tint) => new TileLayer({
+const esriLayer = (id, service) => new TileLayer({
   id, data: `${ESRI}/${service}/MapServer/tile/{z}/{y}/{x}`,
   minZoom: 0, maxZoom: 16, tileSize: 256, maxRequests: 16, getTileData: loadTile,
   renderSubLayers: props => {
     if (!props.data) return null;
     const [[west, south], [east, north]] = props.tile.boundingBox;
-    return new BitmapLayer(props, {
-      data: null, image: props.data, bounds: [west, south, east, north],
-      tintColor: tint,
-    });
+    return new BitmapLayer(props, {data: null, image: props.data, bounds: [west, south, east, north]});
   }
 });
-// Colores originales de Esri (sin teñir): el gris da más contraste a las capas de datos.
-const basemap = esriLayer('basemap', 'World_Dark_Gray_Base', [255, 255, 255]);
-const labels = esriLayer('labels', 'World_Dark_Gray_Reference', [255, 255, 255]);
+const basemap = esriLayer('basemap', 'World_Dark_Gray_Base');
+const labels = esriLayer('labels', 'World_Dark_Gray_Reference');
 
 // --- Capas de datos --------------------------------------------------------------------
 function geofenceLayers() {
-  if (!DATA.show.geofences) return [];
+  if (!show.geofences) return [];
   return [
     new GeoJsonLayer({
       id: 'context-zones', data: contextZones, filled: false, stroked: true,
-      getLineColor: f => zoneColor(f.properties.zone_type, 150), lineWidthMinPixels: 1,
+      getLineColor: f => zoneColor(f.properties.zone_type, 170), lineWidthMinPixels: 1,
     }),
     // Achurado: líneas en lugar de relleno sólido; el mapa se sigue viendo debajo.
     new GeoJsonLayer({
       id: 'zones-hatch', data: specialZones, filled: true, stroked: false,
-      getFillColor: f => zoneColor(f.properties.zone_type, 150),
+      getFillColor: f => zoneColor(f.properties.zone_type, 170),
       extensions: [new FillStyleExtension({pattern: true})],
       fillPatternAtlas: PATTERN_ATLAS, fillPatternMapping: PATTERN_MAPPING, fillPatternMask: true,
       getFillPattern: f => DATA.zones.patterns[f.properties.zone_type],
       getFillPatternScale: 0.55, getFillPatternOffset: [0, 0],
     }),
-    // Halo + contorno nítido = efecto de brillo.
     new GeoJsonLayer({
       id: 'zones-halo', data: specialZones, filled: false, stroked: true,
       getLineColor: f => zoneColor(f.properties.zone_type, 70), lineWidthMinPixels: 7,
@@ -182,8 +191,8 @@ function geofenceLayers() {
 }
 
 function infractionLayers() {
-  if (!DATA.show.infractions || !DATA.infractions.length) return [];
-  if (DATA.mode === 'hexagon') {
+  if (!show.infractions || !DATA.infractions.length) return [];
+  if (mode === 'hexagon') {
     return [new HexagonLayer({
       id: 'hexagons', data: DATA.infractions, getPosition: d => d.p,
       radius: 220, elevationScale: 6, extruded: true, coverage: 0.88,
@@ -198,45 +207,59 @@ function infractionLayers() {
   })];
 }
 
+function trailLayer(t) {
+  return new TripsLayer({
+    id: 'trips', data: tripData, getPath: d => d.path, getTimestamps: d => d.timestamps,
+    getColor: route ? [190, 228, 255] : [120, 220, 255], opacity: 1,
+    widthMinPixels: route ? 5 : 3.5, capRounded: true, jointRounded: true,
+    trailLength: tripEnd / (route ? 9 : 24), currentTime: t * tripEnd, fadeTrail: true,
+  });
+}
+
+function fleetLayers(t) {
+  // Vista general: los recorridos de toda la flota (finos) y sus estelas animadas a la vez.
+  if (!show.routes || !fleet) return [];
+  return [
+    new PathLayer({
+      id: 'fleet-paths', data: fleet.vehicles, getPath: d => d.path, pickable: true,
+      getColor: [57, 135, 229, 120], widthMinPixels: 1.6, jointRounded: true,
+      autoHighlight: true, highlightColor: [156, 199, 255, 255],
+    }),
+    trailLayer(t),
+  ];
+}
+
 function routeLayers(t) {
-  if (!route) return [];
+  // Un vehículo en detalle: tramos por severidad, línea segmentada, flechas y estela.
+  if (!show.routes || !route) return [];
   return [
     new PathLayer({
       id: 'route-halo', data: route.segments, getPath: d => d.path,
       getColor: d => rgb(d.color, 55), widthMinPixels: 10, capRounded: true, jointRounded: true,
     }),
-    // Línea segmentada: se distingue de los contornos de las geocercas.
     new PathLayer({
       id: 'route', data: route.segments, getPath: d => d.path, pickable: true,
       getColor: d => rgb(d.color, 240), widthMinPixels: 3, capRounded: true,
       extensions: [new PathStyleExtension({dash: true})],
       getDashArray: [5, 3], dashJustified: true, dashGapPickable: true,
     }),
-    // Flechas de dirección cada ~400 m (rumbo calculado en Python sobre el elipsoide).
-    // Una flecha oscura más grande detrás hace de contorno para que resalten sobre la línea.
     new IconLayer({
       id: 'route-arrows-shadow', data: route.arrows, getPosition: d => d.p,
-      iconAtlas: ARROW_ICON, iconMapping: {arrow: {x: 0, y: 0, width: 64, height: 64, mask: true}},
-      getIcon: () => 'arrow', getSize: 24, sizeUnits: 'pixels',
-      getAngle: d => -d.bearing, getColor: [8, 11, 18, 235],
+      iconAtlas: ARROW_ICON, iconMapping: ARROW_MAPPING, getIcon: () => 'arrow',
+      getSize: 24, sizeUnits: 'pixels', getAngle: d => -d.bearing, getColor: [8, 11, 18, 235],
     }),
     new IconLayer({
       id: 'route-arrows', data: route.arrows, getPosition: d => d.p,
-      iconAtlas: ARROW_ICON, iconMapping: {arrow: {x: 0, y: 0, width: 64, height: 64, mask: true}},
-      getIcon: () => 'arrow', getSize: 17, sizeUnits: 'pixels',
-      getAngle: d => -d.bearing, getColor: d => rgb(d.color, 255),
+      iconAtlas: ARROW_ICON, iconMapping: ARROW_MAPPING, getIcon: () => 'arrow',
+      getSize: 17, sizeUnits: 'pixels', getAngle: d => -d.bearing,
+      getColor: d => rgb(d.color, 255),
     }),
-    // Estela animada: el vehículo recorre su día en ~25 segundos.
-    new TripsLayer({
-      id: 'trip', data: trip, getPath: d => d.path, getTimestamps: d => d.timestamps,
-      getColor: [190, 228, 255], opacity: 1, widthMinPixels: 5, capRounded: true, jointRounded: true,
-      trailLength: tripEnd / 9, currentTime: t * tripEnd, fadeTrail: true,
-    }),
+    trailLayer(t),
   ];
 }
 
 function alertLayers(t) {
-  if (!DATA.show.alerts || !DATA.alerts.length) return [];
+  if (!show.alerts || !DATA.alerts.length) return [];
   return [
     // Anillo que se expande y se desvanece: cada alerta "late" con un desfase propio.
     new ScatterplotLayer({
@@ -259,18 +282,22 @@ function alertLayers(t) {
 function tooltip({object, layer}) {
   if (!object) return null;
   const box = html => ({html, style: {
-    background: 'rgba(13,16,22,.94)', color: '#f0efec', border: '1px solid rgba(255,255,255,.1)',
+    background: 'rgba(15,20,28,.95)', color: '#f0efec', border: '1px solid rgba(255,255,255,.12)',
     borderRadius: '10px', padding: '9px 11px', fontSize: '12px', fontFamily: 'Inter, sans-serif',
     boxShadow: '0 10px 30px -10px rgba(0,0,0,.9)', maxWidth: '260px'}});
   if (layer.id === 'special-zones') {
     const p = object.properties;
     return box(`<b>${esc(p.name)}</b><br>${DATA.zones.labels[p.zone_type]} · límite <b>${p.speed_limit_kmh} km/h</b>`
-      + `<br><span style="color:#898781">${p.limit_source === 'law' ? 'Ley 2251 de 2022' : 'Política de la flota'}</span>`);
+      + `<br><span style="color:#9aa3b2">${p.limit_source === 'law' ? 'Ley 2251 de 2022' : 'Política de la flota'}</span>`);
+  }
+  if (layer.id === 'fleet-paths') {
+    return box(`<span style="font-family:'JetBrains Mono'">${esc(object.label)}</span>`
+      + `<br><span style="color:#9aa3b2">Elige este vehículo en el panel para ver su ruta en detalle</span>`);
   }
   if (layer.id === 'route') {
     const over = object.severity ? ` · <span style="color:${DATA.severity.colors[object.severity]}">${DATA.severity.labels[object.severity]}</span>` : '';
     return box(`<b>${fmtTime(object.ts)}</b>${over}<br>${object.speed.toFixed(0)} km/h · límite ${object.limit} km/h`
-      + `<br><span style="color:#898781">${DATA.zones.labels[object.zone] || 'Sin geocerca'}</span>`);
+      + `<br><span style="color:#9aa3b2">${DATA.zones.labels[object.zone] || 'Sin geocerca'}</span>`);
   }
   if (layer.id === 'alerts') {
     return box(`<b>${object.type}</b> · <span style="color:${DATA.severity.colors[object.sev]}">${DATA.severity.labels[object.sev]}</span>`
@@ -281,7 +308,7 @@ function tooltip({object, layer}) {
   return null;
 }
 
-// --- Leyenda --------------------------------------------------------------------------
+// --- Leyenda y panel de capas ------------------------------------------------------------
 const HATCH_CSS = {
   diag: c => `repeating-linear-gradient(-45deg, ${c} 0 2px, transparent 2px 5px)`,
   anti: c => `repeating-linear-gradient(45deg, ${c} 0 2px, transparent 2px 5px)`,
@@ -289,55 +316,84 @@ const HATCH_CSS = {
 };
 function renderLegend() {
   const z = DATA.zones, s = DATA.severity;
-  const zoneRows = ['school', 'high_risk', 'road_hazard'].map(k =>
-    `<div class="row"><span class="sw" style="background:${HATCH_CSS[z.patterns[k]](z.colors[k])};border:1px solid ${z.colors[k]}"></span>${z.labels[k]}</div>`).join('');
-  const ctxRows = ['urban', 'highway'].map(k =>
-    `<div class="row"><span class="line" style="background:${z.colors[k]}"></span>${z.labels[k]}</div>`).join('');
-  const sevRows = ['minor', 'moderate', 'severe'].map(k =>
-    `<div class="row"><span class="dash" style="border-color:${s.colors[k]}"></span>Exceso ${s.labels[k].toLowerCase()}</div>`).join('');
-  let html = `<section><h5>Geocercas</h5>${zoneRows}${ctxRows}</section>`;
-  if (route) {
+  let html = '';
+  if (show.geofences) {
+    const zoneRows = ['school', 'high_risk', 'road_hazard'].map(k =>
+      `<div class="row"><span class="sw" style="background:${HATCH_CSS[z.patterns[k]](z.colors[k])};border:1px solid ${z.colors[k]}"></span>${z.labels[k]}</div>`).join('');
+    const ctxRows = ['urban', 'highway'].map(k =>
+      `<div class="row"><span class="line" style="background:${z.colors[k]}"></span>${z.labels[k]}</div>`).join('');
+    html += `<section><h5>Geocercas</h5>${zoneRows}${ctxRows}</section>`;
+  }
+  if (show.routes && route) {
+    const sevRows = ['minor', 'moderate', 'severe'].map(k =>
+      `<div class="row"><span class="dash" style="border-color:${s.colors[k]}"></span>Exceso ${s.labels[k].toLowerCase()}</div>`).join('');
     html += `<section><h5>Ruta · ${esc(route.label)}</h5>`
       + `<div class="row"><span class="dash" style="border-color:#3987e5"></span>Dentro del límite</div>${sevRows}`
       + `<div class="row"><span style="color:#9cc7ff;width:18px;text-align:center">▲</span>Sentido de avance</div></section>`;
+  } else if (show.routes && fleet) {
+    html += `<section><h5>Flota · ${fleet.vehicles.length} vehículos</h5>`
+      + `<div class="row"><span class="line" style="background:#3987e5"></span>Recorridos del periodo</div>`
+      + `<div class="row"><span class="line" style="background:#78dcff;box-shadow:0 0 6px #78dcff"></span>Movimiento (animado)</div></section>`;
   }
-  if (DATA.show.infractions) {
-    html += `<section><h5>${DATA.mode === 'hexagon' ? 'Infracciones (hexágonos 3D)' : 'Densidad de infracciones'}</h5>`
+  if (show.infractions) {
+    html += `<section><h5>${mode === 'hexagon' ? 'Infracciones (hexágonos 3D)' : 'Densidad de infracciones'}</h5>`
       + `<div class="ramp" style="background:linear-gradient(90deg,${DATA.heatRamp.join(',')})"></div>`
       + `<div class="ends"><span>baja</span><span>alta</span></div></section>`;
   }
-  document.getElementById('legend').innerHTML = html;
-  document.getElementById('title').innerHTML = `<span class="live"></span>${esc(DATA.title)}`;
+  const legend = document.getElementById('legend');
+  legend.innerHTML = html;
+  legend.style.display = html ? 'block' : 'none';
 }
 
-// --- Navegación: vuelos entre vistas sin recargar la página ------------------------------
+function renderLayerPanel() {
+  const items = [
+    ['geofences', 'Geocercas'],
+    ['routes', route ? 'Ruta del vehículo' : 'Recorridos de la flota'],
+    ['infractions', 'Infracciones'],
+    ['alerts', 'Alertas que pulsan'],
+  ];
+  document.getElementById('layers').innerHTML = '<h5>Capas</h5>'
+    + items.map(([k, label]) => `<label><input type="checkbox" data-layer="${k}" ${show[k] ? 'checked' : ''}>${label}</label>`).join('')
+    + `<div class="seg"><button data-mode="heatmap" class="${mode === 'heatmap' ? 'active' : ''}">Heatmap</button>`
+    + `<button data-mode="hexagon" class="${mode === 'hexagon' ? 'active' : ''}">Hexágonos 3D</button></div>`
+    + `<button class="fit" id="fit">⤢ Encuadrar datos</button>`;
+  document.querySelectorAll('#layers input').forEach(i => i.onchange = () => {
+    show[i.dataset.layer] = i.checked; renderLegend();
+  });
+  document.querySelectorAll('#layers .seg button').forEach(b => b.onclick = () => {
+    mode = b.dataset.mode; renderLayerPanel(); renderLegend(); fit(true);
+  });
+  document.getElementById('fit').onclick = () => fit(true);
+}
+
+// --- Encuadre automático en lo que está filtrado ---------------------------------------------
 const map = document.getElementById('map');
-function routeView() {
-  if (!trip.length) return null;
-  const xs = trip[0].path.map(p => p[0]), ys = trip[0].path.map(p => p[1]);
+function dataBounds() {
+  const pts = [];
+  if (route) pts.push(...route.trip.path);
+  else if (fleet) fleet.vehicles.forEach(v => pts.push(...v.path));
+  DATA.alerts.forEach(a => pts.push(a.p));
+  if (!pts.length) DATA.geofences.forEach(f => f.geometry.coordinates.forEach(poly => pts.push(...poly[0])));
+  if (!pts.length) return null;
+  const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]);
+  return [[Math.min(...xs), Math.min(...ys)], [Math.max(...xs), Math.max(...ys)]];
+}
+function targetView() {
+  const bounds = dataBounds();
+  const tilt = mode === 'hexagon' ? {pitch: 50, bearing: -18} : {pitch: 0, bearing: 0};
+  if (!bounds) return {longitude: -74.1, latitude: 4.65, zoom: 10.5, ...tilt};
   const vp = new WebMercatorViewport({width: map.clientWidth || 1000, height: map.clientHeight || 600});
-  const {longitude, latitude, zoom} = vp.fitBounds(
-    [[Math.min(...xs), Math.min(...ys)], [Math.max(...xs), Math.max(...ys)]], {padding: 80});
-  return {longitude, latitude, zoom: Math.min(zoom, 14.5)};
+  const {longitude, latitude, zoom} = vp.fitBounds(bounds, {padding: {top: 70, bottom: 40, left: 250, right: 210}});
+  return {longitude, latitude, zoom: Math.min(zoom, 14.5), ...tilt};
 }
-const VIEWS = {...(routeView() ? {'Ruta': routeView()} : {}), ...DATA.views};
-const pitch = DATA.mode === 'hexagon' ? {pitch: 50, bearing: -18} : {pitch: 0, bearing: 0};
-let current = Object.keys(VIEWS)[0];
-
-function renderNav() {
-  document.getElementById('nav').innerHTML = Object.keys(VIEWS).map(name =>
-    `<button class="${name === current ? 'active' : ''}" data-view="${esc(name)}">${esc(name)}</button>`).join('');
-  document.querySelectorAll('#nav button').forEach(b => b.onclick = () => flyTo(b.dataset.view));
-}
-function flyTo(name) {
-  current = name; renderNav();
-  deckgl.setProps({initialViewState: {...VIEWS[name], ...pitch, transitionDuration: 1800,
-                                      transitionInterpolator: new FlyToInterpolator({speed: 1.6})}});
+function fit(animated) {
+  deckgl.setProps({initialViewState: {...targetView(),
+    ...(animated ? {transitionDuration: 1400, transitionInterpolator: new FlyToInterpolator({speed: 1.8})} : {})}});
 }
 
 const deckgl = new Deck({
   parent: map,
-  initialViewState: {...VIEWS[current], ...pitch},
+  initialViewState: targetView(),
   controller: true,
   getTooltip: tooltip,
   layers: [],
@@ -348,13 +404,14 @@ const LOOP_MS = 25000;
 const started = performance.now();
 function frame(now) {
   const t = ((now - started) % LOOP_MS) / LOOP_MS;
-  // De abajo hacia arriba: fondo, geocercas, infracciones, etiquetas, ruta y alertas.
+  // De abajo hacia arriba: fondo, geocercas, infracciones, etiquetas, recorridos y alertas.
   deckgl.setProps({layers: [basemap, ...geofenceLayers(), ...infractionLayers(), labels,
-                            ...routeLayers(t), ...alertLayers(t)]});
+                            ...fleetLayers(t), ...routeLayers(t), ...alertLayers(t)]});
   requestAnimationFrame(frame);
 }
+document.getElementById('title').innerHTML = `<span class="live"></span>${esc(DATA.title)}`;
 renderLegend();
-renderNav();
+renderLayerPanel();
 requestAnimationFrame(frame);
 </script>
 </body>

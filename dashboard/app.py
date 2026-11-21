@@ -1,7 +1,11 @@
-"""Dashboard "Centro de control de flota" (D-20, D-21, D-23).
+"""Dashboard "Centro de control de flota" (D-20, D-21, D-23, D-23).
 
 Ejecutar: uv run python tasks.py dashboard   (o: uv run streamlit run dashboard/app.py)
 Lee solo la capa Oro y las geocercas, asumiendo en PostgreSQL el rol elegido.
+
+Todo el tablero (KPIs, mapa, ranking y alertas) responde al mismo alcance: periodo, ciudades,
+vehículo, tipos de infracción y severidad. Los filtros se aplican juntos con un botón, para no
+recargar la página en cada clic; las capas del mapa se encienden dentro del mapa, al instante.
 """
 
 from __future__ import annotations
@@ -14,7 +18,7 @@ import tour
 import ui
 
 from data import DataSource, PostgresSource
-from fleet_pipeline.queries.dashboard import AlertFilter, QueryResult
+from fleet_pipeline.queries.dashboard import AlertFilter, QueryResult, Scope
 from fleet_pipeline.security.auth import Role
 
 st.set_page_config(
@@ -27,12 +31,8 @@ ui.render(theme.CSS)
 # Aviso "Cargando datos…": visible solo mientras Streamlit vuelve a ejecutar la página.
 ui.render(ui.loading_overlay())
 
-# Vistas a las que el mapa puede "volar" sin recargar la página.
-VIEWS = {
-    "Bogotá": {"longitude": -74.10, "latitude": 4.65, "zoom": 10.6},
-    "Medellín": {"longitude": -75.575, "latitude": 6.25, "zoom": 11.6},
-    "Corredor": {"longitude": -74.85, "latitude": 5.45, "zoom": 7.4},
-}
+ALL_VEHICLES = "Todos los vehículos"
+CITIES = {"Bogotá": "bogota", "Medellín": "medellin", "Corredor Bogotá–Medellín": "corridor"}
 # Tipos de infracción que el usuario puede combinar, agrupados: tipo de alerta + zona.
 INFRACTION_GROUPS = {
     "Exceso de velocidad": {
@@ -45,7 +45,9 @@ INFRACTION_GROUPS = {
         "🚧 Vía deteriorada": ["GEOFENCE_VIOLATION:road_hazard"],
     },
 }
-SEVERITIES = {"Leve": "minor", "Moderada": "moderate", "Grave": "severe"}
+SEVERITIES = {"🟡 Leve": "minor", "🟠 Moderada": "moderate", "🔴 Grave": "severe"}
+# Con la flota completa se dibuja una lectura de cada 6 (~1 minuto): suficiente para el mapa.
+FLEET_SAMPLE_EVERY = 6
 
 source: DataSource = PostgresSource()
 
@@ -54,6 +56,10 @@ source: DataSource = PostgresSource()
 def cached_geofences() -> QueryResult:
     """Las geocercas casi nunca cambian: se consultan una vez por hora, no en cada clic."""
     return source.geofences(Role.ANALYST)
+
+
+def group_title(text: str) -> None:
+    st.markdown(f'<p class="group-title">{text}</p>', unsafe_allow_html=True)
 
 
 # --- Barra lateral -------------------------------------------------------------------
@@ -83,76 +89,75 @@ with st.sidebar:
     if bounds["last"] is None:
         st.warning("La capa Oro está vacía. Corre `uv run python tasks.py seed`.")
         st.stop()
+    directory = source.vehicles(role).rows
 
-    with st.container(key="tour-period"):
-        st.markdown("### Periodo")
-        period = st.date_input(
-            "Periodo",
-            value=(max(bounds["first"], bounds["last"] - timedelta(days=1)), bounds["last"]),
-            min_value=bounds["first"],
-            max_value=bounds["last"],
-            label_visibility="collapsed",
-            format="DD/MM/YYYY",
-        )
-    date_from, date_to = period if len(period) == 2 else (period[0], period[0])
-
-    ranking = source.ranking(role, date_from, date_to)
-    vehicles = ranking.rows
-    with st.container(key="tour-vehicle"):
-        st.markdown("### Vehículo (ruta)")
-        # Por defecto, el de menor Driver Score: el que más historia tiene para mostrar.
-        worst = min(
-            range(len(vehicles)),
-            key=lambda i: vehicles[i]["score"] if vehicles[i]["score"] is not None else 101,
-            default=0,
-        )
-        vehicle = st.selectbox(
-            "Vehículo",
-            vehicles,
-            index=worst,
-            format_func=lambda v: f"{v['label']} · {v['vehicle_type']} · {v['score'] or '—'}",
-            label_visibility="collapsed",
-        )
-
-    with st.container(key="tour-filters"):
-        st.markdown("### Infracciones")
-        categories: list[str] = []
-        for group, options in INFRACTION_GROUPS.items():
-            st.markdown(f'<p class="group-title">{group}</p>', unsafe_allow_html=True)
-            for label, group_categories in options.items():
-                if st.checkbox(label, value=True, key=f"type-{label}"):
-                    categories.extend(group_categories)
-        chosen_severities = st.multiselect(
-            "Severidad", list(SEVERITIES), default=list(SEVERITIES), placeholder="Elige severidad"
-        )
-        st.markdown('<p class="group-title">Otras alertas</p>', unsafe_allow_html=True)
-        show_fuel = st.checkbox("⛽ Combustible insuficiente", value=True)
-        st.markdown("### Capas del mapa")
-        show = {
-            "geofences": st.toggle("Geocercas", value=True),
-            "route": st.toggle("Ruta del vehículo", value=True),
-            "infractions": st.toggle("Infracciones", value=True),
-            "alerts": st.toggle("Alertas que pulsan", value=True),
-        }
-        mode = (
-            st.segmented_control(
-                "Infracciones como", ["Heatmap", "Hexágonos 3D"], default="Heatmap"
+    # Formulario: los cambios se aplican juntos con un solo clic (una sola recarga).
+    with st.form("filters", border=False):
+        with st.container(key="tour-period"):
+            st.markdown("### Periodo")
+            period = st.date_input(
+                "Periodo",
+                value=(max(bounds["first"], bounds["last"] - timedelta(days=1)), bounds["last"]),
+                min_value=bounds["first"],
+                max_value=bounds["last"],
+                label_visibility="collapsed",
+                format="DD/MM/YYYY",
             )
-            or "Heatmap"
-        )
-    # Sin selección no se muestra nada (en vez de "todo"): así el filtro hace lo que dice.
-    alert_filter = AlertFilter(
-        categories=categories,
-        severities=[SEVERITIES[s] for s in chosen_severities],
-    )
+            st.markdown("### Ciudad")
+            regions = [region for label, region in CITIES.items() if st.checkbox(label, value=True)]
+
+        with st.container(key="tour-vehicle"):
+            st.markdown("### Vehículo")
+            labels = {v["vehicle_key"]: v["label"] for v in directory}
+            options = [None, *labels]
+            # ?vehicle=<clave> en la dirección abre el tablero con ese vehículo (enlace directo).
+            linked = st.query_params.get("vehicle", "")
+            preselected = int(linked) if linked.isdigit() and int(linked) in labels else None
+            vehicle_key = st.selectbox(
+                "Vehículo",
+                options,
+                index=options.index(preselected),
+                format_func=lambda k: ALL_VEHICLES if k is None else labels[k],
+                label_visibility="collapsed",
+            )
+            st.caption("Elige uno para ver su ruta en detalle; tiene prioridad sobre la ciudad.")
+
+        with st.container(key="tour-filters"):
+            st.markdown("### Infracciones")
+            categories: list[str] = []
+            for group, options in INFRACTION_GROUPS.items():
+                group_title(group)
+                for label, group_categories in options.items():
+                    if st.checkbox(label, value=True, key=f"type-{label}"):
+                        categories.extend(group_categories)
+            group_title("Severidad")
+            severities = [
+                value
+                for label, value in SEVERITIES.items()
+                if st.checkbox(label, value=True, key=f"sev-{label}")
+            ]
+            group_title("Otras alertas")
+            show_fuel = st.checkbox("⛽ Combustible insuficiente", value=True)
+
+        st.form_submit_button("Aplicar filtros", type="primary", use_container_width=True)
+
+# --- Alcance común a todas las consultas ------------------------------------------------
+date_from, date_to = period if len(period) == 2 else (period[0], period[0])
+if vehicle_key is not None:
+    vehicle_keys = [vehicle_key]
+else:
+    vehicle_keys = [v["vehicle_key"] for v in directory if v["region"] in regions]
+scope = Scope(date_from, date_to, vehicle_keys)
+# Sin selección no se muestra nada (en vez de "todo"): así el filtro hace lo que dice.
+alert_filter = AlertFilter(categories=categories, severities=severities)
 
 # --- Consultas -------------------------------------------------------------------------
-kpis = source.kpis(role, date_from, date_to)
-route = source.route(role, vehicle["vehicle_key"], date_to) if vehicle else None
-infractions = source.infractions(role, date_from, date_to, alert_filter)
-alerts = source.recent_alerts(role, date_from, date_to, alert_filter)
-fuel = source.fuel_alerts(role, date_from, date_to)
-fuel_rows = [r for r in fuel.rows if r["severity"] in alert_filter.severities] if show_fuel else []
+kpis = source.kpis(role, scope, alert_filter)
+ranking = source.ranking(role, scope)
+routes = source.routes(role, scope, 1 if vehicle_key is not None else FLEET_SAMPLE_EVERY)
+infractions = source.infractions(role, scope, alert_filter)
+alerts = source.recent_alerts(role, scope, alert_filter)
+fuel = source.fuel_alerts(role, scope, severities if show_fuel else [])
 geofences = cached_geofences()
 
 # --- Página ----------------------------------------------------------------------------
@@ -160,28 +165,40 @@ ui.render(ui.hero(role_label, role is Role.ANALYST, bounds["last"].strftime("%d/
 with st.container(key="tour-kpis"):
     ui.render(ui.kpi_cards(kpis.rows[0]))
 
-route_payload = (
-    ui.route_payload(route.rows, f"{vehicle['label']} · {date_to:%d/%m}") if route else None
-)
+if vehicle_key is not None:
+    detail = ui.route_payload(
+        routes.rows, f"{labels[vehicle_key]} · {date_from:%d/%m}–{date_to:%d/%m}"
+    )
+    fleet, subject = None, labels[vehicle_key]
+else:
+    detail = None
+    fleet = ui.fleet_payload(routes.rows, labels)
+    subject = f"{len(vehicle_keys)} vehículos"
+    # Sugerencia una sola vez por sesión.
+    if not st.session_state.get("tip_shown"):
+        st.toast("Consejo: elige un vehículo en el panel para ver su ruta en detalle.", icon="💡")
+        st.session_state["tip_shown"] = True
+
+# Geocercas de las ciudades elegidas (con un vehículo elegido, todas: su ruta puede cruzarlas).
+shown_regions = set(regions) if vehicle_key is None else set(CITIES.values())
 html = ui.map_html(
-    views=VIEWS,
-    mode="hexagon" if mode == "Hexágonos 3D" else "heatmap",
-    show=show,
-    geofences=geofences.rows,
-    route=route_payload,
+    mode="heatmap",
+    geofences=[g for g in geofences.rows if g["city"] in shown_regions],
+    fleet=fleet,
+    route=detail,
     infractions=infractions.rows,
     alerts=alerts.rows[:40],
-    title=f"Periodo {date_from:%d/%m} – {date_to:%d/%m}",
+    title=f"{subject} · {date_from:%d/%m} – {date_to:%d/%m}",
 )
 with st.container(key="tour-map"):
     # HTML propio (plantilla + datos de nuestra base serializados como JSON), nunca de usuarios.
-    st.iframe(html, height=640)
+    st.iframe(html, height=660)
 
 left, right = st.columns([5, 7], gap="medium")
 with left, st.container(key="tour-ranking"):
     ui.render(ui.ranking_panel(ranking.rows))
 with right, st.container(key="tour-alerts"):
-    ui.render(ui.alerts_panel(alerts.rows, fuel_rows))
+    ui.render(ui.alerts_panel(alerts.rows, fuel.rows))
 
 with st.container(key="tour-timings"):
     ui.render(
@@ -189,7 +206,7 @@ with st.container(key="tour-timings"):
             {
                 "KPIs": kpis.ms,
                 "ranking": ranking.ms,
-                "ruta": route.ms if route else 0.0,
+                "recorridos": routes.ms,
                 "heatmap": infractions.ms,
                 "alertas": alerts.ms + fuel.ms,
             }
