@@ -3,6 +3,7 @@
 Pipeline geoespacial de telemetría vehicular (IoT/AVL) en tres capas, **Bronce → Plata → Oro**, sobre PostgreSQL 16 + PostGIS 3.5.
 
 Este documento explica:
+
 - qué hace cada capa y por qué está construida así;
 - cómo se almacenan y consultan millones de coordenadas;
 - qué se sacrificó a cambio de rendimiento.
@@ -33,6 +34,7 @@ flowchart LR
 | **Oro** | Una fila por lectura con todo consolidado y el ID ya enmascarado; Driver Score | `gold.process_new()` | BI: administradores y analistas |
 
 **Principio rector: la lógica espacial vive en PostGIS.** El cruce punto–polígono, las distancias, el consumo y los episodios de alerta se calculan con SQL por lotes (*set-based*), dentro de la base, donde están los datos y los índices. Python se encarga de:
+
 - la ingesta y su validación;
 - la orquestación de los procesos;
 - la especificación ejecutable de las reglas (sección 9).
@@ -136,21 +138,24 @@ LEFT JOIN LATERAL (
 ```
 
 **Cómo lo resuelve PostgreSQL**, en dos fases:
+
 1. El índice **GiST** compara el punto con los rectángulos envolventes de los polígonos y descarta casi todos sin tocar su geometría.
 2. `ST_Within` hace la prueba exacta, que es costosa, solo con las pocas candidatas.
 
 **`ST_Subdivide`: optimización medida.** El GiST trabaja con rectángulos envolventes. El polígono del corredor tiene 33 427 vértices y un rectángulo que cubre Bogotá y Medellín, así que nunca se descartaba. Por eso el cargador genera `silver.geofence_parts`: cada geocerca se parte en piezas de **256 vértices como máximo** (439 piezas en total), cada una con un rectángulo ajustado y su propio GiST.
+
 - **Medido** con `EXPLAIN ANALYZE` sobre 113 000 lecturas: **10 653 ms → 1 736 ms (6,1×)**.
 - Un test de integración comprueba, con 3 000 puntos al azar, que las piezas dan **exactamente** el mismo resultado que los polígonos completos.
 
 **Reglas del cruce:**
+
 - Si un punto está en varias geocercas (por ejemplo, una zona escolar dentro del perímetro urbano), **gana la más restrictiva**: el menor límite y, en empate, la de mayor riesgo.
 - Fuera de toda geocerca rige el límite por defecto de 90 km/h.
 - **Borde:** `ST_Within` no cuenta como "dentro" un punto exactamente sobre el borde. Esa semántica está probada tanto en PostGIS como en Shapely.
 
 ### Alertas de velocidad con límite dinámico
 
-```
+```text
 umbral = límite de la geocerca aplicada + 5 km/h          (tolerancia por ruido del GPS)
 episodio = 2 o más lecturas consecutivas sobre el umbral  (un pico aislado no alerta)
 severidad = (velocidad máxima − límite) / límite:  ≤ 20 % leve · ≤ 50 % moderada · > 50 % grave
@@ -161,7 +166,7 @@ severidad = (velocidad máxima − límite) / límite:  ≤ 20 % leve · ≤ 50 
 
 ### Consumo predictivo: ¿alcanza el combustible?
 
-```
+```text
 consumo (L/km)      = combustible gastado / distancia recorrida   (últimos 20 km, reales)
 km restantes        = ST_LineLocatePoint(ruta, posición) y sentido del viaje
 combustible necesario = km restantes × consumo × 1,15            (15 % de reserva)
@@ -201,6 +206,7 @@ flowchart LR
 ### `gold.fleet_events`: la tabla consolidada
 
 Una fila por lectura, con todo lo que un analista necesita sin hacer joins:
+
 - clave sustituta, ID enmascarado y tipo de vehículo;
 - hora y día de negocio;
 - punto, velocidad, límite aplicado y exceso;
@@ -215,7 +221,7 @@ Una fila por lectura, con todo lo que un analista necesita sin hacer joins:
 
 Es un puntaje diario de 0 a 100 por vehículo. La fórmula es simple, explicable y verificable:
 
-```
+```text
 puntos = Σ episodios × peso por severidad (leve 1 · moderada 3 · grave 6)
          × 2 si es GEOFENCE_VIOLATION        (exceder en zona escolar pesa el doble)
 score  = 100 × e^(−0,005 × puntos por cada 100 km)
@@ -232,6 +238,7 @@ score  = 100 × e^(−0,005 × puntos por cada 100 km)
 ### Variables para la optimización de rutas B2B
 
 Oro deja listas, por vehículo, día, tramo o geocerca:
+
 - km recorridos y consumo real (L/100 km);
 - tiempo y distancia en zonas de riesgo;
 - excesos por geocerca: puntos calientes por zona;

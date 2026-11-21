@@ -13,3 +13,7 @@ address = "127.0.0.1"
 
 [browser]
 gatherUsageStats = false
+
+[client]
+# Sin el botón "Deploy" ni el menú de desarrollador: el tablero se ve como producto final.
+toolbarMode = "viewer"

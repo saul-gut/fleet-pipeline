@@ -37,7 +37,7 @@ Antes de seguir, **abre Docker Desktop** y espera a que diga que está corriendo
 ## 2. Clonar y configurar
 
 ```bash
-git clone https://github.com/<usuario>/fleet-pipeline.git
+git clone https://github.com/saul-gut/fleet-pipeline.git
 cd fleet-pipeline
 ```
 
