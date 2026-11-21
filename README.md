@@ -155,4 +155,4 @@ Este proyecto se desarrolló con apoyo de un asistente de IA para programación.
 
 ---
 
-**Autor:** Saúl Gutiérrez · Geógrafo, especialista en SIG y analítica territorial.
+**Autor:** Saúl Gutiérrez · Geógrafo con más de 10 años de experiencia en SIG y analítica territorial.
