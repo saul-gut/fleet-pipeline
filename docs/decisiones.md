@@ -221,6 +221,10 @@ Decisiones de arquitectura con su contexto, las alternativas consideradas y la r
   - Alerta `LOW_FUEL_FOR_ROUTE` si `litros < km restantes × consumo × 1,15`, con 2 lecturas seguidas y una sola vez por trayecto.
   - Severidad según la fracción de lo necesario que hay en el tanque: < 50% grave, < 80% moderada.
 - **Validación:** el consumo estimado (35,4–35,9 L/100 km) coincide con el del simulador (35 L/100 km más la penalización por conducción brusca).
+- **Carga incremental sin reescrituras:**
+  - El solape de Plata recalcula lecturas ya procesadas, pero el `UPSERT` solo reescribe las que cambiaron (`IS DISTINCT FROM`).
+  - Plata sella cada lote con `clock_timestamp()` tomado después de obtener su bloqueo. Como sus ejecuciones van de a una, el sello crece de lote en lote, y Oro lee con una marca de agua estricta.
+  - Se detectó al probar sobre una base recién cargada: Oro, con un solape de 5 minutos, reescribía 112 934 filas para cargar 70 lecturas nuevas (3 939 ms). Ahora escribe 70 en 17 ms.
 
 ## D-18 · Simulador consciente de las zonas
 
