@@ -225,6 +225,7 @@ Decisiones de arquitectura con su contexto, las alternativas consideradas y la r
   - El solape de Plata recalcula lecturas ya procesadas, pero el `UPSERT` solo reescribe las que cambiaron (`IS DISTINCT FROM`).
   - Plata sella cada lote con `clock_timestamp()` tomado después de obtener su bloqueo. Como sus ejecuciones van de a una, el sello crece de lote en lote, y Oro lee con una marca de agua estricta.
   - Se detectó al probar sobre una base recién cargada: Oro, con un solape de 5 minutos, reescribía 112 934 filas para cargar 70 lecturas nuevas (3 939 ms). Ahora escribe 70 en 17 ms.
+  - El consumo se redondea a 0,01 L/100 km. Sale de restar sumas acumuladas, y recalcularlo desde otro inicio de ventana cambiaba el sexto dígito, lo que bastaba para reescribir la fila. De ~7 000 lecturas recalculadas en el solape, ahora se reescriben 3.
 
 ## D-18 · Simulador consciente de las zonas
 

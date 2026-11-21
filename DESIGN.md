@@ -197,7 +197,7 @@ flowchart LR
 - **Datos tardíos:** el solape de 5 minutos recoge las lecturas que llegaron con atraso.
 - **Episodios que cruzan lotes:** el contexto de 3 horas permite que un episodio que empezó en un lote y sigue en otro se reconstruya completo.
 - **Idempotencia:** todo es `UPSERT`, así que reprocesar no duplica alertas. Hay un test que lo comprueba.
-- **Sin escrituras inútiles:** el solape recalcula lecturas ya procesadas, pero el `UPSERT` solo reescribe una fila si algún valor cambió (`IS DISTINCT FROM`). Así se evitan tuplas muertas y Oro no recarga lo que sigue igual.
+- **Sin escrituras inútiles:** el solape recalcula lecturas ya procesadas, pero el `UPSERT` solo reescribe una fila si algún valor cambió (`IS DISTINCT FROM`). Así se evitan tuplas muertas y Oro no recarga lo que sigue igual. Para que el recálculo sea estable, el consumo se redondea a 0,01 L/100 km: más dígitos serían precisión falsa, y su sexto dígito variaba según dónde empezara la ventana.
 - **Oro, estrictamente incremental:** Plata sella cada lote con la hora en que obtiene su bloqueo, y como sus ejecuciones van de a una, el sello crece con cada lote. Oro lee con una marca de agua estricta, sin solape. **Medido** tras una carga de 112 864 lecturas: cargar 70 lecturas nuevas en Oro bajó de 3 939 ms (reescribía 112 934 filas) a 17 ms (70 filas).
 - **Medido:** 112 953 lecturas procesadas en ~8 s, con 2 148 alertas.
 

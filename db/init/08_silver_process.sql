@@ -171,10 +171,14 @@ BEGIN
     ), predicted AS (
         SELECT
             w.*,
-            CASE WHEN w.window_m >= p_min_fuel_window_m AND w.fuel_used_l > 0
-                 THEN w.fuel_used_l / (w.window_m / 1000)
-                 ELSE w.ref_l_100km / 100
-            END AS consumption_l_km,
+            -- Redondeado a 0,01 L/100 km: más precisión sería falsa (el sensor mide en %) y,
+            -- como sale de restar sumas acumuladas, recalcularlo desde otro inicio de
+            -- ventana cambia el sexto dígito. Redondeado, el recálculo da el mismo valor y
+            -- el UPSERT no reescribe la fila.
+            round((CASE WHEN w.window_m >= p_min_fuel_window_m AND w.fuel_used_l > 0
+                        THEN w.fuel_used_l / (w.window_m / 1000)
+                        ELSE w.ref_l_100km / 100
+                   END)::numeric, 4)::double precision AS consumption_l_km,
             CASE w.direction
                 WHEN 1 THEN (1 - w.route_fraction) * w.length_m / 1000
                 WHEN -1 THEN w.route_fraction * w.length_m / 1000

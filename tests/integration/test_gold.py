@@ -61,11 +61,12 @@ def test_sql_driver_score_matches_python(
     assert float(score) == pytest.approx(driver_score(points, km), abs=0.05)
 
 
-def test_gold_is_strictly_incremental(
+def test_processing_is_strictly_incremental(
     conn_autocommit: psycopg.Connection, processed_trip: tuple[str, int]
 ) -> None:
-    """Oro solo escribe lo nuevo: sin datos nuevos no escribe nada, y un lote de 10 lecturas
-    escribe 10 filas, aunque Plata haya procesado mucho más en los minutos anteriores."""
+    """Sin datos nuevos, Oro no escribe nada. Con 10 lecturas nuevas, Plata recalcula su
+    ventana de solape pero no reescribe las lecturas que no cambiaron, y Oro escribe
+    exactamente lo que Plata cambió en ese lote."""
     vehicle, _ = processed_trip
     assert run_gold(conn_autocommit)[0] == 0
 
@@ -81,4 +82,17 @@ def test_gold_is_strictly_incremental(
         (vehicle,),
     )
     run_silver(conn_autocommit)
-    assert run_gold(conn_autocommit)[0] == 10
+    row = conn_autocommit.execute(
+        """
+        WITH batch AS (SELECT max(processed_at) AS stamp FROM silver.telemetry_enriched)
+        SELECT count(*) FILTER (WHERE e.vehicle_id = %s),
+               count(*)
+        FROM silver.telemetry_enriched AS e, batch
+        WHERE e.processed_at = batch.stamp
+        """,
+        (vehicle,),
+    ).fetchone()
+    assert row is not None
+    trip_rows_in_batch, batch_rows = row
+    assert trip_rows_in_batch == 10  # solo las nuevas: las 70 anteriores no cambiaron
+    assert run_gold(conn_autocommit)[0] == batch_rows
