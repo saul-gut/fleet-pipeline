@@ -19,6 +19,7 @@ from __future__ import annotations
 import json
 import logging
 import time
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -27,6 +28,7 @@ import duckdb
 import psycopg
 import pyarrow as pa
 import pyarrow.parquet as pq
+from psycopg import Column
 from psycopg.rows import dict_row
 
 from fleet_pipeline.queries.dashboard import AlertFilter, QueryResult, Scope
@@ -84,12 +86,35 @@ def export_snapshot(conn: psycopg.Connection, out_dir: Path = DEFAULT_SNAPSHOT_D
     with conn.cursor(row_factory=dict_row) as cur:
         for name, query in EXPORTS.items():
             rows = cur.execute(query).fetchall()
-            table = pa.Table.from_pylist(rows)
+            # Sin filas, pyarrow no puede inferir columnas: se toman de la consulta, para que
+            # la tabla exista aunque esté vacía (p. ej. un periodo sin alertas de combustible).
+            table = pa.Table.from_pylist(rows) if rows else _empty_table(cur.description or [])
             pq.write_table(
                 table, out_dir / f"{name}.parquet", compression="zstd", compression_level=19
             )
             counts[name] = len(rows)
     return counts
+
+
+# Tipos de PostgreSQL (OID) -> Arrow, para exportar tablas vacías con sus columnas.
+_ARROW_TYPES = {
+    16: pa.bool_(),
+    20: pa.int64(),
+    21: pa.int16(),
+    23: pa.int32(),
+    25: pa.string(),
+    700: pa.float32(),
+    701: pa.float64(),
+    1043: pa.string(),
+    1082: pa.date32(),
+    1114: pa.timestamp("us"),
+    1700: pa.float64(),
+}
+
+
+def _empty_table(description: Sequence[Column]) -> pa.Table:
+    schema = pa.schema([(c.name, _ARROW_TYPES.get(c.type_code, pa.string())) for c in description])
+    return schema.empty_table()
 
 
 # --- Consultas sobre la foto ---------------------------------------------------------------
