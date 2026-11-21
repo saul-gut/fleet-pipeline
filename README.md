@@ -24,6 +24,24 @@ Todo se consolida en una tabla para BI que responde en milisegundos sobre millon
 | **Oro** | `gold.fleet_events`: tabla consolidada con GiST, GiST parcial, BRIN y partición diaria, sin IDs reales. Driver Score diario normalizado por 100 km. | [`09_gold.sql`](db/init/09_gold.sql) |
 | **Tablero** | Streamlit + deck.gl: ruta del vehículo, heatmap o hexágonos de infracciones, geocercas, alertas de combustible, ranking de Driver Score y cambio de rol en vivo (administrador o analista). | [`dashboard/`](dashboard) |
 
+## Requisitos y dónde se cumplen
+
+| Requisito | Implementación | Verificación |
+| --- | --- | --- |
+| Servicio que simula la transmisión en tiempo real de dispositivos IoT/AVL | API [`POST /telemetry`](src/fleet_pipeline/api/ingest.py) + [simulador](src/fleet_pipeline/simulator) en modo histórico y en vivo | [`test_ingest_api.py`](tests/integration/test_ingest_api.py) |
+| Paquete con ID, timestamp, latitud y longitud decimales, velocidad y combustible | [`TelemetryPacket`](src/fleet_pipeline/ingestion/schemas.py) y [reglas de calidad](src/fleet_pipeline/ingestion/quality.py) | [`test_quality.py`](tests/unit/test_quality.py) |
+| Persistencia en PostgreSQL + PostGIS | [`docker-compose.yml`](docker-compose.yml) y [`04_bronze.sql`](db/init/04_bronze.sql), particionada por día | [CI](.github/workflows/ci.yml) con PostGIS real |
+| Enmascaramiento del ID (`VHC-****-ABC`) para no administradores | Roles y vistas en [`05_security.sql`](db/init/05_security.sql); rol por petición en [`security/`](src/fleet_pipeline/security) | [`test_masking.py`](tests/integration/test_masking.py) |
+| Geocercas de prueba: perímetros urbanos y zonas de alta siniestralidad | 25 polígonos en [`geofences.geojson`](data/geofences/geofences.geojson), de [fuentes oficiales](data/geofences/SOURCES.md) | [`test_geofences.py`](tests/unit/test_geofences.py) |
+| Dentro o fuera de la geocerca con `ST_Within` | Cruce con GiST en [`08_silver_process.sql`](db/init/08_silver_process.sql) | [`test_geofences_sql.py`](tests/integration/test_geofences_sql.py): PostGIS = Shapely en 3 000 puntos |
+| Alerta de exceso de velocidad con límite dinámico según la geocerca | Geocerca más restrictiva y episodios en [`08_silver_process.sql`](db/init/08_silver_process.sql), especificados en [`rules.py`](src/fleet_pipeline/processing/rules.py) | [`test_rules.py`](tests/unit/test_rules.py), [`test_silver.py`](tests/integration/test_silver.py) |
+| Alerta predictiva si el combustible no alcanza para la ruta | Consumo real y km restantes (`ST_LineLocatePoint`) en los mismos archivos | [`test_rules.py`](tests/unit/test_rules.py) |
+| Driver Score | Vista `gold.driver_score` en [`09_gold.sql`](db/init/09_gold.sql) | [`test_gold.py`](tests/integration/test_gold.py): SQL = Python |
+| Tabla consolidada con índices GiST, en milisegundos sobre millones de registros | `gold.fleet_events` en [`09_gold.sql`](db/init/09_gold.sql) | [Benchmark con 5 M filas](docs/benchmarks.md) |
+| Tablero con la ruta del vehículo y un heatmap de infracciones | [`dashboard/`](dashboard) | [`test_dashboard_queries.py`](tests/integration/test_dashboard_queries.py) |
+| Pruebas unitarias de geocercas y cálculos predictivos | [`tests/unit/`](tests/unit) y [`tests/integration/`](tests/integration) | 232 tests en el [CI](.github/workflows/ci.yml) |
+| Documentación de diseño y de despliegue local | [DESIGN.md](DESIGN.md) y [SETUP.md](SETUP.md), con la inicialización de PostGIS | Seguida paso a paso en un clon limpio |
+
 ## Arquitectura
 
 ```mermaid
