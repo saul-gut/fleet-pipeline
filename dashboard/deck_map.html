@@ -331,7 +331,11 @@ function tooltip({object, layer}) {
   if (layer.id === 'fuel') {
     return box(`<b>⛽ Combustible insuficiente</b> · <span style="color:${DATA.severity.colors[object.sev]}">${DATA.severity.labels[object.sev]}</span>`
       + `<br><span style="font-family:'JetBrains Mono'">${esc(object.label)}</span> · ${fmtTime(object.ts)}`
-      + `<br>Tenía <b>${object.fuel} L</b> y necesitaba <b>${object.needed} L</b> para los ${object.remaining} km que faltaban`);
+      + `<br>Rumbo a <b>${esc(object.destination)}</b> · faltan ${object.remaining} km`
+      + `<br>Tiene <b>${object.fuel} L</b>; necesita <b>${object.needed} L</b> (incluye 15% de reserva)`
+      + `<br><span style="color:#9aa3b2">${object.fuel >= object.needed / 1.15
+          ? 'Llega, pero gastando la reserva de seguridad'
+          : `No llega: le faltan ~${Math.round(object.needed / 1.15 - object.fuel)} L. Debe tanquear antes`}</span>`);
   }
   if (layer.id === 'hexagons') return box(`<b>${object.count}</b> episodios de infracción`);
   return null;
@@ -357,8 +361,8 @@ function renderLegend() {
     const sevRows = ['minor', 'moderate', 'severe'].map(k =>
       `<div class="row"><span class="dash" style="border-color:${s.colors[k]}"></span>Exceso ${s.labels[k].toLowerCase()}</div>`).join('');
     html += `<section><h5>Ruta · ${esc(route.label)}</h5>`
-      + `<div class="row"><span class="dash" style="border-color:#3987e5"></span>Dentro del límite</div>${sevRows}`
-      + `<div class="row"><span style="color:#9cc7ff;width:18px;text-align:center">▲</span>Sentido de avance</div></section>`;
+      + `<div class="row"><span class="dash" style="border-color:#22c55e"></span>Dentro del límite</div>${sevRows}`
+      + `<div class="row"><span style="color:#86efac;width:18px;text-align:center">▲</span>Sentido de avance</div></section>`;
   } else if (show.routes && fleet) {
     html += `<section><h5>Flota · ${fleet.vehicles.length} vehículos</h5>`
       + `<div class="row"><span class="line" style="background:#3987e5"></span>Recorridos del periodo</div>`

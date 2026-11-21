@@ -89,9 +89,10 @@ with st.sidebar:
         st.stop()
     directory = source.vehicles(role).rows
 
+    # Periodo fuera del formulario: al cambiar entre "Un día" y "Varios días" el calendario
+    # se adapta al instante (y el cambio de fecha se aplica de inmediato).
     with st.container(key="tour-period"):
         st.markdown("### Periodo")
-        # Fuera del formulario: al cambiar el modo, el selector de fecha cambia al instante.
         period_mode = (
             st.segmented_control(
                 "Modo de periodo",
@@ -101,27 +102,27 @@ with st.sidebar:
             )
             or "Un día"
         )
+        if period_mode == "Un día":
+            day = st.date_input(
+                "Día",
+                value=bounds["last"],
+                min_value=bounds["first"],
+                max_value=bounds["last"],
+                format="DD/MM/YYYY",
+            )
+            period = (day, day)
+        else:
+            period = st.date_input(
+                "Desde – hasta",
+                value=(bounds["first"], bounds["last"]),
+                min_value=bounds["first"],
+                max_value=bounds["last"],
+                format="DD/MM/YYYY",
+            )
 
-    # Formulario: los cambios se aplican juntos con un solo clic (una sola recarga).
+    # Formulario: los demás filtros se aplican juntos con un solo clic (una sola recarga).
     with st.form("filters", border=False):
         with st.container(key="tour-city"):
-            if period_mode == "Un día":
-                day = st.date_input(
-                    "Día",
-                    value=bounds["last"],
-                    min_value=bounds["first"],
-                    max_value=bounds["last"],
-                    format="DD/MM/YYYY",
-                )
-                period = (day, day)
-            else:
-                period = st.date_input(
-                    "Desde – hasta",
-                    value=(bounds["first"], bounds["last"]),
-                    min_value=bounds["first"],
-                    max_value=bounds["last"],
-                    format="DD/MM/YYYY",
-                )
             st.markdown("### Ciudad")
             regions = [region for label, region in CITIES.items() if st.checkbox(label, value=True)]
 

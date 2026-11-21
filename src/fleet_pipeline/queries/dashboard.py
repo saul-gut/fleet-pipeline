@@ -244,7 +244,8 @@ def fuel_alerts(
     query = sql.SQL(
         """
         SELECT s.alert_id, {label} AS label, s.severity, s.started_at, s.ended_at,
-               s.fuel_l, s.fuel_needed_l, s.remaining_km, ST_X(s.geom) AS lon, ST_Y(s.geom) AS lat
+               s.fuel_l, s.fuel_needed_l, s.remaining_km, s.destination,
+               ST_X(s.geom) AS lon, ST_Y(s.geom) AS lat
         FROM gold.fuel_alerts AS s {join}
         WHERE {in_scope} AND s.severity = ANY(%(severities)s) AND {ts_range}
         ORDER BY s.started_at DESC

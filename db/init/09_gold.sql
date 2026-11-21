@@ -178,6 +178,8 @@ LEFT JOIN silver.routes AS r USING (route_id);
 
 -- Alertas de combustible para BI, con el ID ya enmascarado. Es una vista: se ejecuta con
 -- los permisos de su dueño, así que el analista la lee sin acceso a Plata ni a Bronce.
+-- `destination` dice hacia dónde iba el vehículo cuando saltó la alerta: el nombre de la ruta
+-- es "Origen – Destino" y el sentido sale de la lectura en ese instante.
 CREATE OR REPLACE VIEW gold.fuel_alerts AS
 SELECT
     a.alert_id, v.vehicle_key, analytics.mask_vehicle_id(v.vehicle_id) AS vehicle_id_masked,
@@ -185,9 +187,12 @@ SELECT
     (a.details->>'fuel_l')::real AS fuel_l,
     (a.details->>'fuel_needed_l')::real AS fuel_needed_l,
     (a.details->>'remaining_km')::real AS remaining_km,
-    a.details->>'route_id' AS route_id
+    a.details->>'route_id' AS route_id,
+    split_part(r.name, ' – ', CASE WHEN e.direction = -1 THEN 1 ELSE 2 END) AS destination
 FROM silver.alerts AS a
 JOIN bronze.vehicles AS v USING (vehicle_id)
+LEFT JOIN silver.telemetry_enriched AS e ON e.vehicle_id = a.vehicle_id AND e.ts = a.started_at
+LEFT JOIN silver.routes AS r ON r.route_id = a.details->>'route_id'
 WHERE a.alert_type = 'LOW_FUEL_FOR_ROUTE';
 
 -- Driver Score diario por vehículo (D-19). Pequeña (vehículos × días): se recalcula entera.

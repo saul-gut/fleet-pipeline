@@ -143,18 +143,37 @@ _TEMPLATE = """<!doctype html><html><body><script>
     const js = D.createElement('script'); js.src = '__DRIVER__/driver.js.iife.js'; js.onload = done;
     D.head.appendChild(js);
   }
+  // Sugerencia junto a los filtros de día y vehículo, que se iluminan mientras está visible.
   function showTip() {
     D.querySelectorAll('.fleet-tip').forEach(el => el.remove());
+    const targets = ['.st-key-tour-period', '.st-key-tour-vehicle']
+      .map(sel => D.querySelector(sel)).filter(Boolean);
+    const vehicle = D.querySelector('.st-key-tour-vehicle');
+    if (vehicle) vehicle.scrollIntoView({behavior: 'smooth', block: 'center'});
+    targets.forEach(el => el.classList.add('fleet-attention'));
+
     const tip = D.createElement('div');
     tip.className = 'fleet-tip';
-    tip.innerHTML = '<span class="icon">💡</span><div><b>Consejo</b>Elige un <b>vehículo</b> y un '
-      + '<b>día</b> en el panel izquierdo y pulsa <b>Aplicar filtros</b>: verás su ruta con '
-      + 'flechas de sentido y los tramos coloreados por severidad.</div>'
+    tip.innerHTML = '<span class="icon">💡</span><div><b>Consejo</b>Elige un <b>día</b> y un '
+      + '<b>vehículo</b> aquí y pulsa <b>Aplicar filtros</b>: verás su ruta con flechas de '
+      + 'sentido y los tramos coloreados por severidad.</div>'
       + '<button aria-label="Cerrar">×</button>';
-    tip.querySelector('button').onclick = () => tip.remove();
+    const close = () => {
+      tip.classList.add('out');
+      targets.forEach(el => el.classList.remove('fleet-attention'));
+      setTimeout(() => tip.remove(), 500);
+    };
+    tip.querySelector('button').onclick = close;
     D.body.appendChild(tip);
-    setTimeout(() => tip.classList.add('out'), 11000);
-    setTimeout(() => tip.remove(), 11600);
+    // Se ubica a la derecha de la sección de vehículo, cuando el desplazamiento terminó.
+    setTimeout(() => {
+      const box = (vehicle || targets[0] || D.body).getBoundingClientRect();
+      tip.style.left = `${Math.round(box.right + 16)}px`;
+      const top = box.top + box.height / 2 - tip.offsetHeight / 2;
+      tip.style.top = `${Math.max(16, Math.round(top))}px`;
+      tip.classList.add('in');
+    }, 650);
+    setTimeout(close, 12000);
   }
   function start() {
     const steps = STEPS.filter(s => !s.element || D.querySelector(s.element));

@@ -148,6 +148,11 @@ def ranking_panel(rows: list[dict[str, Any]]) -> str:
     return _panel(title, subtitle, f'<div class="scroll">{body}</div>')
 
 
+def _destination(name: str | None) -> str:
+    """ "Medellín (Guayabal)" -> "Medellín": el barrio sobra en una tabla."""
+    return (name or "destino").split(" (")[0]
+
+
 def _panel(title: str, subtitle: str, body: str) -> str:
     return f'<div class="panel"><h4>{title}</h4><div class="sub">{subtitle}</div>{body}</div>'
 
@@ -164,8 +169,8 @@ def alerts_panel(
                 r["label"],
                 "⛽ " + theme.ALERT_LABELS["LOW_FUEL_FOR_ROUTE"],
                 r["severity"],
-                f"{_fmt(r['fuel_l'])} de {_fmt(r['fuel_needed_l'])} L necesarios",
-                f"{_fmt(r['remaining_km'])} km restantes",
+                f"Tiene {_fmt(r['fuel_l'])} L; necesita {_fmt(r['fuel_needed_l'])} L",
+                f"Rumbo a {_destination(r['destination'])} · {_fmt(r['remaining_km'])} km",
             )
             for r in fuel_rows
         ),
@@ -247,7 +252,7 @@ def route_payload(
         segments.append(
             {
                 "path": [[a["lon"], a["lat"]], [b["lon"], b["lat"]]],
-                "color": theme.SEVERITY_COLORS.get(severity, theme.ACCENT),
+                "color": theme.SEVERITY_COLORS.get(severity, theme.ROUTE_OK),
                 "severity": severity,
                 "speed": float(b["speed_kmh"]),
                 "limit": b["speed_limit_kmh"],
@@ -295,7 +300,7 @@ def _arrows(rows: list[dict[str, Any]], severities: list[str | None]) -> list[di
         arrows[cell] = {
             "p": [b["lon"], b["lat"]],
             "bearing": round(bearing),
-            "color": theme.SEVERITY_COLORS.get(severity, theme.ACCENT),
+            "color": theme.SEVERITY_COLORS.get(severity, theme.ROUTE_OK),
         }
     return list(arrows.values())
 
@@ -374,6 +379,7 @@ def map_html(
                 "fuel": round(float(f["fuel_l"])),
                 "needed": round(float(f["fuel_needed_l"])),
                 "remaining": round(float(f["remaining_km"])),
+                "destination": _destination(f["destination"]),
                 "ts": f["started_at"].isoformat(),
             }
             for f in fuel

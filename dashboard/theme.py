@@ -48,6 +48,8 @@ SEVERITY_COLORS: dict[str, str] = {
     "severe": "#d03b3b",  # critical
 }
 SEVERITY_LABELS = {"minor": "Leve", "moderate": "Moderada", "severe": "Grave"}
+# Tramos de la ruta dentro del límite: verde ("todo bien"), en contraste con la severidad.
+ROUTE_OK = "#22c55e"
 GOOD = "#0ca30c"
 
 ALERT_LABELS = {
