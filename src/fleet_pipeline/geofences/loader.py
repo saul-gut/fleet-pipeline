@@ -34,16 +34,35 @@ ON CONFLICT (code) DO UPDATE SET
 """
 
 
+# Piezas de máximo 256 vértices para el cruce espacial (D-16). ST_Dump separa los
+# MultiPolygon resultantes en polígonos simples.
+MAX_VERTICES_PER_PART = 256
+INSERT_PARTS_SQL = """
+INSERT INTO silver.geofence_parts (geofence_id, geom)
+SELECT geofence_id, (ST_Dump(ST_Subdivide(geom, %s))).geom
+FROM silver.geofences
+"""
+
+
 def read_features(path: Path = DEFAULT_GEOFENCES_PATH) -> list[dict[str, Any]]:
     return json.loads(path.read_text(encoding="utf-8"))["features"]
 
 
 def load_geofences(conn: psycopg.Connection, features: list[dict[str, Any]]) -> int:
-    """Inserta o actualiza cada geocerca por su `code`. Devuelve cuántas procesó."""
+    """Inserta o actualiza cada geocerca por su `code` y regenera sus piezas.
+
+    Devuelve cuántas geocercas procesó.
+    """
     with conn.cursor() as cur:
         cur.executemany(
             UPSERT_SQL,
             [{**f["properties"], "geometry": json.dumps(f["geometry"])} for f in features],
         )
-    log.info("Geocercas cargadas o actualizadas: %d", len(features))
+        cur.execute("TRUNCATE silver.geofence_parts")
+        cur.execute(INSERT_PARTS_SQL, (MAX_VERTICES_PER_PART,))
+        cur.execute("ANALYZE silver.geofence_parts")
+        parts = cur.execute("SELECT count(*) FROM silver.geofence_parts").fetchone()
+    log.info(
+        "Geocercas cargadas o actualizadas: %d (%d piezas)", len(features), parts[0] if parts else 0
+    )
     return len(features)

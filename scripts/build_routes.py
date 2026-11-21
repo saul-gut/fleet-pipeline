@@ -53,6 +53,28 @@ MED = {
     "robledo": (6.2780, -75.5960),
     "guayabal": (6.2160, -75.5850),
 }
+# Zonas críticas (D-16): punto interior de hotspots (HR) y zonas escolares (SCH) generadas por
+# scripts/prepare_geofences.py. Las rutas urbanas pasan por las que les quedan a menos de ~2 km,
+# como lo haría una ruta de reparto real, para que las infracciones tengan dónde ocurrir.
+ZONES = {
+    "BOG-HR-01": (4.5579, -74.1390),
+    "BOG-HR-02": (4.5629, -74.1261),
+    "BOG-HR-03": (4.6238, -74.0853),
+    "BOG-HR-04": (4.6078, -74.0743),
+    "BOG-HR-05": (4.6328, -74.0783),
+    "BOG-SCH-01": (4.6400, -74.1590),
+    "BOG-SCH-02": (4.7417, -74.1036),
+    "BOG-SCH-03": (4.6058, -74.1868),
+    "MED-HR-01": (6.2280, -75.5746),
+    "MED-HR-02": (6.2637, -75.5970),
+    "MED-HR-03": (6.2137, -75.5780),
+    "MED-HR-04": (6.2532, -75.5691),
+    "MED-HR-05": (6.2747, -75.5578),
+    "MED-SCH-01": (6.2460, -75.5625),
+    "MED-SCH-03": (6.2917, -75.5744),
+    "MED-SCH-04": (6.3001, -75.5675),
+}
+
 # Puntos de paso del corredor por la Autopista Medellín–Bogotá (Ruta 60), para que la ruta
 # atraviese los tramos de riesgo definidos en la D-06 (El Santuario–Caño Alegre y Guarne).
 CORRIDOR_VIA = [
@@ -76,37 +98,76 @@ ROUTES = [
         "BOG-01",
         "Corabastos – Chapinero – Usaquén",
         "urban_bogota",
-        [BOG["corabastos"], BOG["chapinero"], BOG["usaquen"]],
+        [
+            BOG["corabastos"],
+            ZONES["BOG-SCH-01"],
+            ZONES["BOG-HR-03"],
+            BOG["chapinero"],
+            BOG["usaquen"],
+        ],
     ),
     RouteSpec(
-        "BOG-02", "Puente Aranda – Suba", "urban_bogota", [BOG["puente_aranda"], BOG["suba"]]
+        "BOG-02",
+        "Puente Aranda – Suba",
+        "urban_bogota",
+        [BOG["puente_aranda"], ZONES["BOG-HR-03"], ZONES["BOG-SCH-02"], BOG["suba"]],
     ),
     RouteSpec(
         "BOG-03",
         "Aeropuerto – Plaza de Bolívar",
         "urban_bogota",
-        [BOG["aeropuerto"], BOG["plaza_bolivar"]],
+        [BOG["aeropuerto"], ZONES["BOG-HR-05"], ZONES["BOG-HR-04"], BOG["plaza_bolivar"]],
     ),
     RouteSpec(
         "BOG-04",
         "Bosa – Kennedy – Engativá",
         "urban_bogota",
-        [BOG["bosa"], BOG["kennedy"], BOG["engativa"]],
+        [BOG["bosa"], ZONES["BOG-SCH-03"], BOG["kennedy"], ZONES["BOG-SCH-01"], BOG["engativa"]],
     ),
-    RouteSpec("BOG-05", "Meissen – Fontibón", "urban_bogota", [BOG["meissen"], BOG["fontibon"]]),
+    RouteSpec(
+        "BOG-05",
+        "Meissen – Fontibón",
+        "urban_bogota",
+        [BOG["meissen"], ZONES["BOG-HR-01"], ZONES["BOG-HR-02"], BOG["fontibon"]],
+    ),
     RouteSpec(
         "MED-01",
         "El Poblado – Parque Berrío – Manrique",
         "urban_medellin",
-        [MED["poblado"], MED["parque_berrio"], MED["manrique"]],
+        [
+            MED["poblado"],
+            ZONES["MED-SCH-01"],
+            ZONES["MED-HR-04"],
+            MED["parque_berrio"],
+            ZONES["MED-HR-05"],
+            MED["manrique"],
+        ],
     ),
     RouteSpec(
         "MED-02",
         "Belén – Laureles – Castilla",
         "urban_medellin",
-        [MED["belen"], MED["laureles"], MED["castilla"]],
+        [
+            MED["belen"],
+            MED["laureles"],
+            ZONES["MED-HR-02"],
+            ZONES["MED-SCH-03"],
+            MED["castilla"],
+            ZONES["MED-SCH-04"],
+        ],
     ),
-    RouteSpec("MED-03", "Robledo – El Poblado", "urban_medellin", [MED["robledo"], MED["poblado"]]),
+    RouteSpec(
+        "MED-03",
+        "Robledo – El Poblado",
+        "urban_medellin",
+        [
+            MED["robledo"],
+            ZONES["MED-HR-02"],
+            ZONES["MED-HR-01"],
+            ZONES["MED-HR-03"],
+            MED["poblado"],
+        ],
+    ),
     RouteSpec(
         "COR-01",
         "Bogotá (Puente Aranda) – Medellín (Guayabal)",

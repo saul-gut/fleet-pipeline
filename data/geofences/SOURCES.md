@@ -13,7 +13,7 @@ Los archivos originales se descargan con `scripts/download_sources.py` en `data/
 | Hotspot de siniestralidad | `*-HR-01..05` | 40 km/h | Política de la flota | DBSCAN sobre siniestros + buffer de 50 m |
 | Autopista | `COR-HWY` | 90 km/h | Res. MinTransporte 25995 de 2023 | Ruta OSRM, buffer de 30 m |
 | Tramo crítico de Guarne | `COR-GUARNE` | 60 km/h | Política de la flota | ~17 km centrados en Guarne |
-| Vía deteriorada El Santuario–Caño Alegre | `COR-SANTUARIO` | 70 km/h | Política de la flota | 135 km por la ruta desde El Santuario hacia Bogotá |
+| Vía deteriorada El Santuario–Caño Alegre | `COR-SANTUARIO` | 70 km/h | Política de la flota | 135 km por la ruta desde El Santuario hacia Bogotá; termina en (5.8992, -74.6265), cerca de Puerto Triunfo. Caño Alegre no aparece en Nominatim, así que el extremo se asume por distancia |
 
 ## Siniestros viales
 
