@@ -13,3 +13,9 @@ def geodesic_distance_m(lat1: float, lon1: float, lat2: float, lon2: float) -> f
     """Distancia geodésica en metros entre dos puntos en grados decimales (EPSG:4326)."""
     _, _, distance = _WGS84.inv(lon1, lat1, lon2, lat2)
     return float(distance)
+
+
+def geodesic_bearing_deg(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    """Rumbo inicial de 1 hacia 2, en grados desde el norte en sentido horario [0, 360)."""
+    azimuth, _, _ = _WGS84.inv(lon1, lat1, lon2, lat2)
+    return float(azimuth) % 360

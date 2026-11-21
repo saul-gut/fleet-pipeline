@@ -12,9 +12,9 @@ from __future__ import annotations
 from pathlib import Path
 
 # Superficies y tinta
-PAGE = "#07090d"
-SURFACE = "#11141b"
-SURFACE_2 = "#171b24"
+PAGE = "#0f141c"
+SURFACE = "#171d28"
+SURFACE_2 = "#1d2431"
 BORDER = "rgba(255,255,255,0.08)"
 INK = "#f0efec"
 INK_2 = "#c3c2b7"
@@ -22,14 +22,17 @@ MUTED = "#898781"
 ACCENT = "#3987e5"  # azul de la serie 1: acento de la marca del tablero
 ACCENT_GLOW = "rgba(57,135,229,0.45)"
 
-# Zonas (categóricos, modo oscuro)
+# Zonas (categóricos, modo oscuro). La vía deteriorada va en amarillo (advertencia), no en
+# verde, que se lee como "bueno". Amarillo y naranja se confunden con daltonismo, así que cada
+# zona especial lleva además un patrón de líneas distinto (codificación secundaria).
 ZONE_COLORS: dict[str, str] = {
     "school": "#3987e5",  # azul
     "high_risk": "#d95926",  # naranja
-    "road_hazard": "#199e70",  # aguamarina
+    "road_hazard": "#eda100",  # amarillo
     "urban": "#898781",  # contexto
     "highway": "#5c5b57",  # contexto
 }
+ZONE_PATTERNS = {"school": "diag", "high_risk": "anti", "road_hazard": "cross"}
 ZONE_LABELS = {
     "school": "Zona escolar",
     "high_risk": "Alta siniestralidad",

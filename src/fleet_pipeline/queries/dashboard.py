@@ -139,12 +139,32 @@ def route(conn: psycopg.Connection, role: Role, vehicle_key: int, day: date) -> 
     return run(conn, role, query, {"vehicle_key": vehicle_key, "date_from": day, "date_to": day})
 
 
+@dataclass(frozen=True)
+class AlertFilter:
+    """Qué infracciones mostrar.
+
+    `categories` combina tipo de alerta y zona aplicada, p. ej. "SPEEDING:urban" o
+    "GEOFENCE_VIOLATION:school" ("none" = fuera de toda geocerca). `severities` usa
+    minor, moderate y severe.
+    """
+
+    categories: list[str]
+    severities: list[str]
+
+
+# Categoría de cada lectura: "<tipo de alerta>:<zona aplicada>".
+_FILTER = sql.SQL(
+    "(s.alert_type || ':' || coalesce(s.zone_type, 'none')) = ANY(%(categories)s) "
+    "AND s.severity = ANY(%(severities)s)"
+)
+
+
 def infractions(
     conn: psycopg.Connection,
     role: Role,
     date_from: date,
     date_to: date,
-    alert_types: list[str],
+    alert_filter: AlertFilter,
 ) -> QueryResult:
     """Lecturas que forman parte de una alerta: la materia prima del heatmap."""
     query = sql.SQL(
@@ -152,10 +172,15 @@ def infractions(
         SELECT ST_X(s.geom) AS lon, ST_Y(s.geom) AS lat, s.alert_type, s.severity,
                s.excess_kmh
         FROM gold.fleet_events AS s
-        WHERE s.alert_type = ANY(%(alert_types)s) AND {ts_range}
+        WHERE s.alert_type IS NOT NULL AND {alert_filter} AND {ts_range}
         """
-    ).format(ts_range=_TS_RANGE)
-    params = {"alert_types": alert_types, "date_from": date_from, "date_to": date_to}
+    ).format(alert_filter=_FILTER, ts_range=_TS_RANGE)
+    params = {
+        "categories": alert_filter.categories,
+        "severities": alert_filter.severities,
+        "date_from": date_from,
+        "date_to": date_to,
+    }
     return run(conn, role, query, params)
 
 
@@ -164,7 +189,7 @@ def recent_alerts(
     role: Role,
     date_from: date,
     date_to: date,
-    alert_types: list[str],
+    alert_filter: AlertFilter,
     limit: int = 50,
 ) -> QueryResult:
     """Un registro por episodio de alerta (velocidad y geocerca), del más reciente al más viejo."""
@@ -177,14 +202,15 @@ def recent_alerts(
                ST_X(ST_Centroid(ST_Collect(s.geom))) AS lon,
                ST_Y(ST_Centroid(ST_Collect(s.geom))) AS lat
         FROM gold.fleet_events AS s {join}
-        WHERE s.alert_type = ANY(%(alert_types)s) AND {ts_range}
+        WHERE s.alert_type IS NOT NULL AND {alert_filter} AND {ts_range}
         GROUP BY s.alert_id, label, s.alert_type, s.severity
         ORDER BY started_at DESC
         LIMIT %(limit)s
         """
-    ).format(label=_LABEL[role], join=_JOIN_REAL_ID[role], ts_range=_TS_RANGE)
+    ).format(label=_LABEL[role], join=_JOIN_REAL_ID[role], alert_filter=_FILTER, ts_range=_TS_RANGE)
     params = {
-        "alert_types": alert_types,
+        "categories": alert_filter.categories,
+        "severities": alert_filter.severities,
         "date_from": date_from,
         "date_to": date_to,
         "limit": limit,

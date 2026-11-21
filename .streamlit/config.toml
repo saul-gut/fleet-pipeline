@@ -1,8 +1,9 @@
 [theme]
 base = "dark"
-primaryColor = "#3987e5"
-backgroundColor = "#07090d"
-secondaryBackgroundColor = "#11141b"
+# Verde para los controles activos (selecciones, interruptores, etiquetas elegidas).
+primaryColor = "#22c55e"
+backgroundColor = "#0f141c"
+secondaryBackgroundColor = "#1d2431"
 textColor = "#f0efec"
 
 [server]

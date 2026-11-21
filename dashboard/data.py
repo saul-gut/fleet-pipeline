@@ -14,7 +14,7 @@ from psycopg_pool import ConnectionPool
 
 from fleet_pipeline.config import get_settings
 from fleet_pipeline.queries import dashboard as q
-from fleet_pipeline.queries.dashboard import QueryResult
+from fleet_pipeline.queries.dashboard import AlertFilter, QueryResult
 from fleet_pipeline.security.auth import Role
 
 
@@ -25,10 +25,10 @@ class DataSource(Protocol):
     def ranking(self, role: Role, date_from: date, date_to: date) -> QueryResult: ...
     def route(self, role: Role, vehicle_key: int, day: date) -> QueryResult: ...
     def infractions(
-        self, role: Role, date_from: date, date_to: date, types: list[str]
+        self, role: Role, date_from: date, date_to: date, alert_filter: AlertFilter
     ) -> QueryResult: ...
     def recent_alerts(
-        self, role: Role, date_from: date, date_to: date, types: list[str]
+        self, role: Role, date_from: date, date_to: date, alert_filter: AlertFilter
     ) -> QueryResult: ...
     def fuel_alerts(self, role: Role, date_from: date, date_to: date) -> QueryResult: ...
     def geofences(self, role: Role) -> QueryResult: ...
@@ -63,14 +63,14 @@ class PostgresSource:
         return self._run(q.route, role, vehicle_key, day)
 
     def infractions(
-        self, role: Role, date_from: date, date_to: date, types: list[str]
+        self, role: Role, date_from: date, date_to: date, alert_filter: AlertFilter
     ) -> QueryResult:
-        return self._run(q.infractions, role, date_from, date_to, types)
+        return self._run(q.infractions, role, date_from, date_to, alert_filter)
 
     def recent_alerts(
-        self, role: Role, date_from: date, date_to: date, types: list[str]
+        self, role: Role, date_from: date, date_to: date, alert_filter: AlertFilter
     ) -> QueryResult:
-        return self._run(q.recent_alerts, role, date_from, date_to, types)
+        return self._run(q.recent_alerts, role, date_from, date_to, alert_filter)
 
     def fuel_alerts(self, role: Role, date_from: date, date_to: date) -> QueryResult:
         return self._run(q.fuel_alerts, role, date_from, date_to)

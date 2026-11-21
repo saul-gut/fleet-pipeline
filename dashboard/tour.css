@@ -1,0 +1,19 @@
+/* Estilo oscuro del recorrido guiado (driver.js), coherente con style.css. */
+.driver-popover.fleet-tour { background:#11141b; color:#f0efec; border-radius:14px;
+  border:1px solid rgba(57,135,229,.45); box-shadow:0 0 0 1px rgba(57,135,229,.15),
+  0 20px 60px -20px rgba(57,135,229,.6); font-family:Inter, system-ui, sans-serif; max-width:340px; }
+.driver-popover.fleet-tour .driver-popover-title { font-size:15px; font-weight:700; color:#fff; }
+.driver-popover.fleet-tour .driver-popover-description { font-size:13px; line-height:1.5; color:#c3c2b7; }
+.driver-popover.fleet-tour code { background:rgba(57,135,229,.15); padding:1px 5px; border-radius:5px; }
+.driver-popover.fleet-tour .driver-popover-progress-text { color:#898781; font-size:12px; }
+.driver-popover.fleet-tour button { background:#171b24; color:#f0efec; text-shadow:none;
+  border:1px solid rgba(255,255,255,.12); border-radius:8px; padding:6px 11px; font-size:12px; }
+.driver-popover.fleet-tour button.driver-popover-next-btn { background:#3987e5; border-color:#3987e5;
+  box-shadow:0 0 14px rgba(57,135,229,.55); }
+.driver-popover.fleet-tour button.fleet-skip { background:transparent; color:#898781; border:none; }
+.driver-popover.fleet-tour .driver-popover-close-btn { color:#898781; }
+.driver-popover.fleet-tour .driver-popover-arrow { border-color:#11141b; }
+/* El panel lateral de Streamlit tiene una capa alta: la guía debe quedar por encima. */
+.driver-overlay { z-index: 1000000 !important; }
+.driver-popover.fleet-tour { z-index: 1000001 !important; }
+.driver-active-element { z-index: 1000001 !important; }

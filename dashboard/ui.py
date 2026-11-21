@@ -16,6 +16,8 @@ from zoneinfo import ZoneInfo
 import streamlit as st
 import theme
 
+from fleet_pipeline.geo import geodesic_bearing_deg, geodesic_distance_m
+
 BOGOTA = ZoneInfo("America/Bogota")
 MAP_TEMPLATE = Path(__file__).with_name("deck_map.html")
 
@@ -40,6 +42,18 @@ def _fmt(value: float | int | None, decimals: int = 0) -> str:
 
 def _local(ts: datetime) -> str:
     return ts.astimezone(BOGOTA).strftime("%d/%m %H:%M")
+
+
+def loading_overlay() -> str:
+    """Ventana "Cargando datos…". El CSS la muestra solo mientras Streamlit ejecuta la página
+    (atributo data-test-script-state="running") y con un retraso, para que no parpadee en las
+    recargas rápidas. La barra es indeterminada: Streamlit no informa cuánto falta."""
+    return """
+    <div class="app-loading"><div class="card">
+      <div class="spinner"></div>
+      <div><b>Cargando datos…</b><span>Consultando la capa Oro en PostGIS</span>
+        <div class="track"><div class="fill"></div></div></div>
+    </div></div>"""
 
 
 def hero(role_label: str, masked: bool, last_ts: str) -> str:
@@ -216,12 +230,48 @@ def route_payload(rows: list[dict[str, Any]], label: str) -> dict[str, Any] | No
         "path": [[r["lon"], r["lat"]] for r in rows],
         "timestamps": [(r["ts"] - t0).total_seconds() for r in rows],
     }
-    return {"segments": segments, "trip": trip, "label": label}
+    return {"segments": segments, "trip": trip, "arrows": _arrows(rows), "label": label}
+
+
+ARROW_SPACING_M = 400.0
+MIN_ARROW_STEP_M = 20.0  # bajo esta distancia el rumbo es ruido del GPS
+
+
+ARROW_CELL_DEG = 0.003  # ~330 m: una flecha por celda y por sentido
+
+
+def _arrows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Flechas cada ~400 m de recorrido, orientadas con el rumbo del tramo.
+
+    Un vehículo repite su ruta de ida y vuelta varias veces al día: para que las flechas no se
+    amontonen se deja una por celda de ~330 m y por sentido (ida y vuelta se ven ambas).
+    """
+    arrows: dict[tuple[int, int, int], dict[str, Any]] = {}
+    travelled = 0.0
+    for a, b in zip(rows, rows[1:], strict=False):
+        step = geodesic_distance_m(a["lat"], a["lon"], b["lat"], b["lon"])
+        travelled += step
+        if travelled < ARROW_SPACING_M or step < MIN_ARROW_STEP_M:
+            continue
+        travelled = 0.0
+        bearing = geodesic_bearing_deg(a["lat"], a["lon"], b["lat"], b["lon"])
+        cell = (
+            round(b["lat"] / ARROW_CELL_DEG),
+            round(b["lon"] / ARROW_CELL_DEG),
+            round(bearing / 90) % 4,  # sentido aproximado: N, E, S u O
+        )
+        # La más reciente gana: muestra la severidad de la última pasada por ahí.
+        arrows[cell] = {
+            "p": [b["lon"], b["lat"]],
+            "bearing": round(bearing),
+            "color": theme.SEVERITY_COLORS.get(b["severity"], theme.ACCENT),
+        }
+    return list(arrows.values())
 
 
 def map_html(
     *,
-    view: dict[str, float],
+    views: dict[str, dict[str, float]],
     mode: str,
     show: dict[str, bool],
     geofences: list[dict[str, Any]],
@@ -232,11 +282,15 @@ def map_html(
 ) -> str:
     rng = random.Random(7)  # desfase estable del pulso de cada alerta
     data = {
-        "view": view,
+        "views": views,
         "mode": mode,
         "show": show,
         "title": title,
-        "zones": {"colors": theme.ZONE_COLORS, "labels": theme.ZONE_LABELS},
+        "zones": {
+            "colors": theme.ZONE_COLORS,
+            "labels": theme.ZONE_LABELS,
+            "patterns": theme.ZONE_PATTERNS,
+        },
         "severity": {"colors": theme.SEVERITY_COLORS, "labels": theme.SEVERITY_LABELS},
         "heatRamp": theme.HEAT_RAMP,
         "geofences": [

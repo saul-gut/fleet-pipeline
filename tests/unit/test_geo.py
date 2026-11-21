@@ -2,7 +2,7 @@
 
 import pytest
 
-from fleet_pipeline.geo import geodesic_distance_m
+from fleet_pipeline.geo import geodesic_bearing_deg, geodesic_distance_m
 
 PLAZA_BOLIVAR = (4.59808, -74.07609)
 PARQUE_BERRIO = (6.25184, -75.56359)
@@ -24,3 +24,11 @@ def test_distance_is_symmetric_and_zero_for_same_point() -> None:
     backward = geodesic_distance_m(*PARQUE_BERRIO, *PLAZA_BOLIVAR)
     assert forward == pytest.approx(backward)
     assert geodesic_distance_m(*PLAZA_BOLIVAR, *PLAZA_BOLIVAR) == 0
+
+
+@pytest.mark.parametrize(
+    ("lat2", "lon2", "expected"),
+    [(4.61, -74.07, 0), (4.60, -74.06, 90), (4.59, -74.07, 180), (4.60, -74.08, 270)],
+)
+def test_bearing_cardinal_directions(lat2: float, lon2: float, expected: float) -> None:
+    assert geodesic_bearing_deg(4.60, -74.07, lat2, lon2) == pytest.approx(expected, abs=0.1)
