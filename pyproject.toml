@@ -14,6 +14,7 @@ dependencies = [
 
 [dependency-groups]
 dev = [
+    "httpx>=0.28.1",
     "pre-commit>=4.7.0",
     "pytest>=8",
     "pytest-cov>=5",
@@ -37,3 +38,7 @@ select = ["E", "F", "I", "B", "UP", "SIM"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = ["integration: requiere PostGIS corriendo (docker compose up -d)"]
+
+[tool.coverage.run]
+source = ["fleet_pipeline"]

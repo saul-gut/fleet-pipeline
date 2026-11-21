@@ -1,9 +1,12 @@
 -- Capa Bronce: catálogo de vehículos, telemetría cruda particionada por día y rechazos.
 
 -- Catálogo de vehículos (D-08). La capacidad del tanque permite derivar litros desde fuel_pct.
+-- vehicle_key es una clave sustituta sin significado (D-13): permite analizar por vehículo
+-- sin conocer el ID real. La relación key <-> ID solo es visible para bi_admin.
 CREATE TABLE IF NOT EXISTS bronze.vehicles (
     vehicle_id             text PRIMARY KEY
                            CHECK (vehicle_id ~ '^VHC-[0-9]{4}-[A-Z]{3}$'),
+    vehicle_key            integer GENERATED ALWAYS AS IDENTITY UNIQUE,
     vehicle_type           text NOT NULL
                            CHECK (vehicle_type IN ('car', 'van', 'truck')),
     tank_capacity_l        numeric(6, 1) NOT NULL CHECK (tank_capacity_l > 0),
