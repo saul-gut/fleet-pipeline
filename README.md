@@ -72,6 +72,11 @@ uv run python tasks.py dashboard  # tablero en http://localhost:8501
 
 ## Resultados medidos
 
+**Volumen simulado y volumen de prueba.**
+
+- **Simulado:** el simulador genera el volumen real de una flota de 20 vehículos, unas 115 000 lecturas por cada día simulado.
+- **Escala:** se demuestra aparte. [`scripts/benchmark.py`](scripts/benchmark.py) replica esas lecturas hasta 1 y 5 millones de filas, en un esquema separado (`bench`) que se borra al terminar, y mide las consultas con y sin índices ([D-25](docs/decisiones.md#d-25--volumen-simulado-frente-a-escala-del-benchmark)).
+
 **Benchmark de `gold.fleet_events` con 5 078 880 filas** (mediana de `EXPLAIN ANALYZE`). Detalle en [docs/benchmarks.md](docs/benchmarks.md).
 
 | Consulta de BI | Sin índices | Mejor configuración |

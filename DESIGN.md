@@ -356,6 +356,7 @@ Lo siguiente **no está implementado**: es la evolución natural, en orden de ne
 ## 10. Supuestos y límites conocidos
 
 - **Los datos son simulados.** Las rutas son reales (OSRM sobre OpenStreetMap), y los conductores tienen perfiles prudente, normal y agresivo que conocen el límite de cada tramo. El simulador inyecta ~2% de paquetes defectuosos y un camión que sale sin combustible suficiente, para ejercitar las reglas.
+- **Volumen:** el pipeline corre con el volumen real de la flota simulada, ~115 000 lecturas por día. La escala de millones de registros se mide con el benchmark (sección 7), que replica esas lecturas hasta 5 millones de filas en un esquema aparte (D-25).
 - **El combustible llega en porcentaje**, como lo mide un sensor de nivel. Los litros se derivan de la capacidad del tanque del catálogo de vehículos.
 - **El límite por defecto es 90 km/h** (carretera nacional) fuera de toda geocerca. Es configurable, igual que la tolerancia, el número mínimo de lecturas y los umbrales de severidad: todos son parámetros de `silver.process_new()`.
 - **Horizonte de ingesta de 7 días:** las particiones se crean para esa ventana, y una lectura más antigua se rechaza por regla de calidad.

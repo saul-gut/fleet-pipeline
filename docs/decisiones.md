@@ -28,6 +28,7 @@ Decisiones de arquitectura con su contexto, las alternativas consideradas y la r
 | [D-22](#d-22--mapa-base-sin-clave-esri-dark-gray-canvas) | Mapa base sin clave | Visualización |
 | [D-23](#d-23--un-tablero-que-responde-como-un-todo-a-los-filtros) | Tablero coherente con los filtros | Visualización |
 | [D-24](#d-24--integración-continua-con-postgis-real) | Integración continua | Calidad |
+| [D-25](#d-25--volumen-simulado-frente-a-escala-del-benchmark) | Volumen simulado frente a escala del benchmark | Oro |
 
 ---
 
@@ -309,3 +310,18 @@ Decisiones de arquitectura con su contexto, las alternativas consideradas y la r
 - **Protecciones:**
   - La cobertura mínima es 80% (`fail_under`).
   - En local, los tests de integración se omiten si no hay base. En el CI (`CI=true`), **fallan**, para evitar un verde falso.
+
+## D-25 · Volumen simulado frente a escala del benchmark
+
+- **Contexto:** la tabla consolidada debe responder en milisegundos sobre millones de registros. El simulador produce el volumen real de una flota de 20 vehículos: 20 × 360 reportes por hora × 16 h de operación ≈ 115 000 lecturas por día simulado.
+- **Opciones:**
+  - (a) simular millones de lecturas a través de la API;
+  - (b) simular un volumen realista y demostrar la escala con un benchmark que replica esas lecturas en SQL.
+- **Decisión:** (b).
+  - El pipeline completo corre con el volumen de la flota simulada.
+  - `scripts/benchmark.py` replica esas lecturas, desplazadas en el tiempo, hasta 1 y 5 millones de filas, en el esquema `bench`. Ahí mide las consultas de BI sin índices, con índices y con partición.
+  - El esquema se borra al terminar (`--keep` lo conserva).
+- **Por qué:**
+  - La ingesta rechaza lecturas de más de 7 días (D-09), así que la API admite como máximo ~800 000 filas de esta flota, y tardaría entre 30 y 70 minutos.
+  - Replicar en SQL genera 5 millones de filas en ~20 s y prueba lo que importa: el comportamiento de índices y particiones a escala, con la misma estructura y distribución espacial de los datos reales.
+- **Referencia de producción (estimación):** 10 000 vehículos que reportan cada 30 s generan ~29 millones de filas por día. Por eso las tablas grandes están particionadas por día (D-10).
