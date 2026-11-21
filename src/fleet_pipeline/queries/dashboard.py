@@ -190,13 +190,17 @@ def routes(
 def infractions(
     conn: psycopg.Connection, role: Role, scope: Scope, alert_filter: AlertFilter
 ) -> QueryResult:
-    """Lecturas que forman parte de una alerta: la materia prima del heatmap."""
+    """Un punto por episodio de alerta, donde el vehículo alcanzó su velocidad máxima: la
+    materia prima del heatmap. Contar episodios (no lecturas) hace que el calor del mapa sea
+    coherente con los KPIs y la tabla de alertas."""
     query = sql.SQL(
         """
-        SELECT ST_X(s.geom) AS lon, ST_Y(s.geom) AS lat, s.alert_type, s.severity,
+        SELECT DISTINCT ON (s.alert_id)
+               s.alert_id, ST_X(s.geom) AS lon, ST_Y(s.geom) AS lat, s.alert_type, s.severity,
                s.excess_kmh
         FROM gold.fleet_events AS s
         WHERE s.alert_type IS NOT NULL AND {alert_filter} AND {in_scope} AND {ts_range}
+        ORDER BY s.alert_id, s.speed_kmh DESC
         """
     ).format(alert_filter=_ALERT_FILTER, in_scope=_IN_SCOPE, ts_range=_TS_RANGE)
     return run(conn, role, query, scope.params() | alert_filter.params())

@@ -122,3 +122,14 @@ def test_directory_and_geofences_are_available_to_the_analyst(
     geofences = q.geofences(conn_autocommit, Role.ANALYST).rows
     assert len(geofences) == 25
     assert geofences[0]["geometry"]["type"] == "MultiPolygon"
+
+
+def test_heatmap_has_one_point_per_episode(
+    conn_autocommit: psycopg.Connection, processed_trip: tuple[str, int], trip_day: date
+) -> None:
+    """El episodio de prueba tiene 3 lecturas sobre el umbral pero es una sola infracción."""
+    result = q.infractions(
+        conn_autocommit, Role.ANALYST, scope_of(trip_day, processed_trip[1]), URBAN_SPEEDING
+    )
+    assert len(result.rows) == 1
+    assert result.rows[0]["severity"] == "moderate"

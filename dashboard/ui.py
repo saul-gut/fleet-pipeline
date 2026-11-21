@@ -17,6 +17,9 @@ import streamlit as st
 import theme
 
 from fleet_pipeline.geo import geodesic_bearing_deg, geodesic_distance_m
+from fleet_pipeline.processing.rules import ScoreParams
+
+SEVERITY_WEIGHT = dict(ScoreParams().severity_points)
 
 BOGOTA = ZoneInfo("America/Bogota")
 MAP_TEMPLATE = Path(__file__).with_name("deck_map.html")
@@ -330,8 +333,9 @@ def map_html(
             for g in geofences
         ],
         "route": route,
+        # Un punto por episodio, pesado como en el Driver Score: leve 1, moderado 3, grave 6.
         "infractions": [
-            {"p": [round(r["lon"], 5), round(r["lat"], 5)], "w": round(float(r["excess_kmh"]), 1)}
+            {"p": [round(r["lon"], 5), round(r["lat"], 5)], "w": SEVERITY_WEIGHT[r["severity"]]}
             for r in infractions
         ],
         "alerts": [

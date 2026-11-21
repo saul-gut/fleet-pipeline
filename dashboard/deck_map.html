@@ -202,7 +202,7 @@ function infractionLayers() {
   }
   return [new HeatmapLayer({
     id: 'heatmap', data: DATA.infractions, getPosition: d => d.p,
-    getWeight: d => Math.max(1, d.w), radiusPixels: 38, intensity: 1.2, threshold: 0.04,
+    getWeight: d => d.w, radiusPixels: 38, intensity: 1.2, threshold: 0.04,
     colorRange: heatRamp,
   })];
 }
@@ -304,7 +304,7 @@ function tooltip({object, layer}) {
       + `<br><span style="font-family:'JetBrains Mono'">${esc(object.label)}</span> · ${fmtTime(object.ts)}`
       + `<br>máx. ${object.speed.toFixed(0)} km/h en zona de ${object.limit} km/h`);
   }
-  if (layer.id === 'hexagons') return box(`<b>${object.count}</b> lecturas en infracción`);
+  if (layer.id === 'hexagons') return box(`<b>${object.count}</b> episodios de infracción`);
   return null;
 }
 

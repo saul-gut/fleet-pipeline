@@ -1,8 +1,9 @@
 """Recorrido guiado de bienvenida (driver.js 1.10.2, licencia MIT).
 
-Se muestra la primera vez que alguien abre el tablero (queda registrado en el localStorage de
-su navegador) y se puede repetir con el botón "Ver guía". Cada paso resalta un contenedor de
-Streamlit identificado con `st.container(key=...)`, que Streamlit expone como `.st-key-<key>`.
+Se muestra cada vez que se carga o recarga la página (no al aplicar filtros: la ventana guarda
+una marca mientras está abierta) y se puede repetir con el botón "Ver guía". Cada paso resalta
+un contenedor de Streamlit identificado con `st.container(key=...)`, que Streamlit expone como
+`.st-key-<key>`.
 """
 
 from __future__ import annotations
@@ -11,7 +12,6 @@ import json
 from pathlib import Path
 
 DRIVER = "https://cdn.jsdelivr.net/npm/driver.js@1.10.2/dist"
-STORAGE_KEY = "fleet-tour-v1"
 
 STEPS = [
     {
@@ -129,8 +129,10 @@ TOUR_CSS = Path(__file__).with_name("tour.css").read_text(encoding="utf-8")
 _TEMPLATE = """<!doctype html><html><body><script>
 (function () {
   const P = window.parent, D = P.document;
-  const FORCE = __FORCE__, KEY = __KEY__, STEPS = __STEPS__, CSS = __CSS__;
-  try { if (!FORCE && P.localStorage.getItem(KEY)) return; } catch (e) {}
+  const FORCE = __FORCE__, STEPS = __STEPS__, CSS = __CSS__;
+  // La marca vive en la ventana: se borra al recargar la página, no al aplicar filtros.
+  if (!FORCE && P.__fleetTourShown) return;
+  P.__fleetTourShown = true;
 
   function load(done) {
     if (P.driver && P.driver.js) return done();
@@ -153,7 +155,6 @@ _TEMPLATE = """<!doctype html><html><body><script>
         skip.onclick = () => tour.destroy();
         popover.footerButtons.prepend(skip);
       },
-      onDestroyed: () => { try { P.localStorage.setItem(KEY, '1'); } catch (e) {} },
     });
     tour.drive();
   }
@@ -171,7 +172,6 @@ def tour_html(force: bool, nonce: int = 0) -> str:
     """HTML del iframe invisible que inicia el recorrido en la página principal."""
     return (
         _TEMPLATE.replace("__FORCE__", "true" if force else "false")
-        .replace("__KEY__", json.dumps(STORAGE_KEY))
         .replace("__STEPS__", json.dumps(STEPS, ensure_ascii=False))
         .replace("__CSS__", json.dumps(TOUR_CSS))
         .replace("__DRIVER__", DRIVER)
