@@ -60,19 +60,47 @@ flowchart LR
 
 La lógica espacial se ejecuta **dentro de PostGIS**, con SQL por lotes e incremental (marca de agua). Python valida, orquesta y especifica las reglas con tests. El detalle está en [DESIGN.md](DESIGN.md).
 
-## Inicio rápido
+## Desplegar todo en tu computador
 
-Requisitos: Docker, Git y [uv](https://docs.astral.sh/uv/). La guía completa, para Windows, macOS y Linux, está en [SETUP.md](SETUP.md).
+Levanta la arquitectura completa en local: PostGIS, la API de ingesta, el simulador de flota, el procesamiento Bronce → Plata → Oro y el tablero contra la base real.
+
+**Requisitos:** [Docker Desktop](https://www.docker.com/products/docker-desktop/) abierto, Git y [uv](https://docs.astral.sh/uv/). uv instala Python 3.12 y las dependencias exactas de `uv.lock`. Funciona en Windows, macOS y Linux. La guía paso a paso, con la inicialización de PostGIS y una sección de problemas frecuentes, está en **[SETUP.md](SETUP.md)**.
+
+**1. Instalar y levantar la base** (la primera vez descarga la imagen de PostGIS):
 
 ```bash
-git clone https://github.com/saul-gut/fleet-pipeline.git && cd fleet-pipeline
-cp .env.example .env              # y cambia las contraseñas
-uv sync
-uv run python tasks.py up         # PostGIS en Docker, inicializado con db/init/
-uv run python tasks.py api        # terminal 1: API en http://localhost:8000/docs
-uv run python tasks.py seed       # terminal 2: geocercas, flota, 24 h simuladas y procesamiento
-uv run python tasks.py dashboard  # tablero en http://localhost:8501
+git clone https://github.com/saul-gut/fleet-pipeline.git
+cd fleet-pipeline
+cp .env.example .env              # en PowerShell: Copy-Item .env.example .env (y cambia las contraseñas)
+uv sync                           # entorno con las versiones exactas de uv.lock
+uv run python tasks.py up         # PostgreSQL 16 + PostGIS 3.5 en Docker, inicializado con db/init/
 ```
+
+**2. Simular y procesar la flota**, en dos terminales (4–10 min):
+
+```bash
+uv run python tasks.py api        # terminal 1: API de ingesta → http://localhost:8000/docs
+uv run python tasks.py seed       # terminal 2: geocercas, 20 vehículos, 24 h simuladas por la API,
+                                  #             y procesamiento Bronce → Plata → Oro
+```
+
+**3. Ver el tablero:**
+
+```bash
+uv run python tasks.py dashboard  # → http://localhost:8501 (consulta PostGIS con el rol elegido)
+```
+
+**Opcional:**
+
+```bash
+uv run python tasks.py test       # 235 tests unitarios y de integración contra PostGIS, con cobertura
+uv run python tasks.py simulate   # telemetría en vivo cada 10 s (de 5:00 a 21:00, hora de Colombia)
+uv run python tasks.py process    # procesa lo que llegó (incremental)
+uv run python scripts/benchmark.py --rows 1000000   # benchmark de índices (esquema aparte)
+uv run python tasks.py down       # detiene PostGIS; los datos se conservan
+```
+
+`uv run python tasks.py` sin argumentos lista todos los atajos. [SETUP.md](SETUP.md#referencia-qué-hace-cada-atajo) muestra el comando equivalente de cada uno.
 
 ## Resultados medidos
 
