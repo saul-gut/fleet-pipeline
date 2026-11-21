@@ -75,6 +75,7 @@ const SPECIAL = new Set(['school', 'high_risk', 'road_hazard']);
 const zoneColor = (z, a) => rgb(DATA.zones.colors[z] || '#898781', a);
 const sevColor = (s, a) => rgb(DATA.severity.colors[s] || '#3987e5', a);
 const fmtTime = (iso) => new Date(iso).toLocaleString('es-CO', {day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'});
+const fmtDuration = (s) => (s >= 60 ? `${Math.floor(s / 60)} min ${s % 60} s` : `${s} s`);
 // Todo texto que viene de la base se escapa antes de insertarlo en el HTML (defensa en profundidad).
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
 
@@ -326,7 +327,9 @@ function tooltip({object, layer}) {
   if (layer.id === 'alerts') {
     return box(`<b>${object.type}</b> · <span style="color:${DATA.severity.colors[object.sev]}">${DATA.severity.labels[object.sev]}</span>`
       + `<br><span style="font-family:'JetBrains Mono'">${esc(object.label)}</span> · ${fmtTime(object.ts)}`
-      + `<br>máx. ${object.speed.toFixed(0)} km/h en zona de ${object.limit} km/h`);
+      + `<br>Pico <b>${object.speed.toFixed(0)} km/h</b> en zona de ${object.limit} km/h`
+      + `<br>Duró <b>${fmtDuration(object.duration)}</b> · <b>${object.km.toLocaleString('es-CO')} km</b> en exceso`
+      + `<br><span style="color:#9aa3b2">El punto marca el pico; el tramo coloreado de la ruta es todo el episodio</span>`);
   }
   if (layer.id === 'fuel') {
     return box(`<b>⛽ Combustible insuficiente</b> · <span style="color:${DATA.severity.colors[object.sev]}">${DATA.severity.labels[object.sev]}</span>`
@@ -362,6 +365,7 @@ function renderLegend() {
       `<div class="row"><span class="dash" style="border-color:${s.colors[k]}"></span>Exceso ${s.labels[k].toLowerCase()}</div>`).join('');
     html += `<section><h5>Ruta · ${esc(route.label)}</h5>`
       + `<div class="row"><span class="dash" style="border-color:#22c55e"></span>Dentro del límite</div>${sevRows}`
+      + `<div class="row"><span style="width:18px;text-align:center;color:#fab219">●</span>Pico de cada episodio (el tramo de color es todo el exceso)</div>`
       + `<div class="row"><span style="color:#86efac;width:18px;text-align:center">▲</span>Sentido de avance</div></section>`;
   } else if (show.routes && fleet) {
     html += `<section><h5>Flota · ${fleet.vehicles.length} vehículos</h5>`

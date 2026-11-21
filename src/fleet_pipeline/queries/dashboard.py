@@ -220,8 +220,12 @@ def recent_alerts(
                min(s.ts) AS started_at, max(s.ts) AS ended_at,
                max(s.speed_kmh) AS max_speed_kmh, min(s.speed_limit_kmh) AS limit_kmh,
                max(s.geofence_code) AS geofence_code,
-               ST_X(ST_Centroid(ST_Collect(s.geom))) AS lon,
-               ST_Y(ST_Centroid(ST_Collect(s.geom))) AS lat
+               round(sum(s.step_m)) AS distance_m,
+               extract(epoch FROM max(s.ts) - min(s.ts))::int AS duration_s,
+               -- El punto del mapa es el pico de velocidad del episodio (como el heatmap);
+               -- el episodio completo es el tramo coloreado de la ruta.
+               ST_X((array_agg(s.geom ORDER BY s.speed_kmh DESC))[1]) AS lon,
+               ST_Y((array_agg(s.geom ORDER BY s.speed_kmh DESC))[1]) AS lat
         FROM gold.fleet_events AS s {join}
         WHERE s.alert_type IS NOT NULL AND {alert_filter} AND {in_scope} AND {ts_range}
         GROUP BY s.alert_id, label, s.alert_type, s.severity

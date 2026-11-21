@@ -393,6 +393,8 @@ def map_html(
                 "speed": float(a["max_speed_kmh"]),
                 "limit": a["limit_kmh"],
                 "ts": a["started_at"].isoformat(),
+                "duration": a["duration_s"],
+                "km": round(float(a["distance_m"] or 0) / 1000, 2),
                 "phase": rng.random(),
             }
             for a in alerts

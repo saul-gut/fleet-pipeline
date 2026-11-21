@@ -84,8 +84,12 @@ def test_recent_alerts_groups_readings_into_one_episode(
         conn_autocommit, Role.ANALYST, scope_of(trip_day, processed_trip[1]), URBAN_SPEEDING
     )
     assert len(result.rows) == 1
-    assert result.rows[0]["max_speed_kmh"] == 70
-    assert result.rows[0]["severity"] == "moderate"
+    episode = result.rows[0]
+    assert episode["max_speed_kmh"] == 70
+    assert episode["severity"] == "moderate"
+    # 3 lecturas cada 10 s y ~111 m entre lecturas: 20 s y ~333 m en exceso.
+    assert episode["duration_s"] == 20
+    assert 320 <= episode["distance_m"] <= 345
 
 
 def test_alert_filter_by_severity_and_zone(
