@@ -64,8 +64,9 @@ STEPS = [
             "title": "4 · Infracciones",
             "description": (
                 "Combina tipos (excesos por tipo de vía y geocercas escolar, alta siniestralidad "
-                "o vía deteriorada) y severidad. Pulsa <b>Aplicar filtros</b>: todo se recalcula "
-                "de una sola vez."
+                "o vía deteriorada) y severidad. ⛽ <b>Combustible insuficiente</b>: camiones del "
+                "corredor cuyo combustible no alcanza para terminar la ruta. Pulsa <b>Aplicar "
+                "filtros</b>: todo se recalcula de una sola vez."
             ),
             "side": "right",
         },
@@ -142,6 +143,19 @@ _TEMPLATE = """<!doctype html><html><body><script>
     const js = D.createElement('script'); js.src = '__DRIVER__/driver.js.iife.js'; js.onload = done;
     D.head.appendChild(js);
   }
+  function showTip() {
+    D.querySelectorAll('.fleet-tip').forEach(el => el.remove());
+    const tip = D.createElement('div');
+    tip.className = 'fleet-tip';
+    tip.innerHTML = '<span class="icon">💡</span><div><b>Consejo</b>Elige un <b>vehículo</b> y un '
+      + '<b>día</b> en el panel izquierdo y pulsa <b>Aplicar filtros</b>: verás su ruta con '
+      + 'flechas de sentido y los tramos coloreados por severidad.</div>'
+      + '<button aria-label="Cerrar">×</button>';
+    tip.querySelector('button').onclick = () => tip.remove();
+    D.body.appendChild(tip);
+    setTimeout(() => tip.classList.add('out'), 11000);
+    setTimeout(() => tip.remove(), 11600);
+  }
   function start() {
     const steps = STEPS.filter(s => !s.element || D.querySelector(s.element));
     const tour = P.driver.js.driver({
@@ -154,6 +168,12 @@ _TEMPLATE = """<!doctype html><html><body><script>
         skip.className = 'fleet-skip'; skip.textContent = 'Omitir guía';
         skip.onclick = () => tour.destroy();
         popover.footerButtons.prepend(skip);
+      },
+      // Al terminar u omitir: ubicar la pantalla en el mapa y sugerir elegir un vehículo.
+      onDestroyed: () => {
+        const map = D.querySelector('.st-key-tour-map');
+        if (map) map.scrollIntoView({behavior: 'smooth', block: 'start'});
+        setTimeout(showTip, 900);
       },
     });
     tour.drive();

@@ -177,7 +177,7 @@ def routes(
     query = sql.SQL(
         """
         SELECT s.vehicle_key, s.ts, ST_X(s.geom) AS lon, ST_Y(s.geom) AS lat, s.speed_kmh,
-               s.speed_limit_kmh, s.zone_type, s.severity
+               s.speed_limit_kmh, s.zone_type, s.alert_type, s.severity
         FROM gold.fleet_events AS s
         WHERE {in_scope} AND {ts_range}
           AND (%(every)s = 1 OR (extract(epoch FROM s.ts)::bigint / 10) %% %(every)s = 0)

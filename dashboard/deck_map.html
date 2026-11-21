@@ -79,7 +79,7 @@ const fmtTime = (iso) => new Date(iso).toLocaleString('es-CO', {day: '2-digit', 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
 
 // Estado de las capas: se cambia dentro del mapa, sin volver a ejecutar Streamlit.
-const show = {geofences: true, routes: true, infractions: true, alerts: true};
+const show = {geofences: true, routes: true, infractions: true, alerts: true, fuel: true};
 let mode = DATA.mode;
 
 // --- Patrones de achurado (codificación secundaria de cada zona) ---------------------------
@@ -114,6 +114,14 @@ const ARROW_ICON = 'data:image/svg+xml;base64,' + btoa(
   '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">'
   + '<path d="M32 6 L54 50 L32 38 L10 50 Z" fill="#fff"/></svg>');
 const ARROW_MAPPING = {arrow: {x: 0, y: 0, width: 64, height: 64, mask: true}};
+// Surtidor de combustible (icono propio en SVG, sin dependencias).
+const FUEL_ICON = 'data:image/svg+xml;base64,' + btoa(
+  '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">'
+  + '<circle cx="32" cy="32" r="29" fill="#0f141c" stroke="#fff" stroke-width="4"/>'
+  + '<rect x="18" y="16" width="18" height="32" rx="3" fill="#fff"/>'
+  + '<rect x="22" y="20" width="10" height="8" rx="1" fill="#0f141c"/>'
+  + '<path d="M36 24 h6 l4 6 v14 a3 3 0 0 1 -6 0 v-8 h-4" fill="none" stroke="#fff" stroke-width="3"/>'
+  + '</svg>');
 
 // --- Datos que no cambian entre cuadros (mismas referencias = sin recálculo en deck.gl) ---
 const specialZones = DATA.geofences.filter(f => SPECIAL.has(f.properties.zone_type));
@@ -278,6 +286,22 @@ function alertLayers(t) {
   ];
 }
 
+function fuelLayers() {
+  // Combustible insuficiente: dónde empezó la alerta (camiones del corredor).
+  if (!show.fuel || !DATA.fuel.length) return [];
+  return [
+    new ScatterplotLayer({
+      id: 'fuel-halo', data: DATA.fuel, getPosition: d => d.p, radiusUnits: 'pixels',
+      getRadius: 20, getFillColor: d => sevColor(d.sev, 70), stroked: false,
+    }),
+    new IconLayer({
+      id: 'fuel', data: DATA.fuel, getPosition: d => d.p, pickable: true,
+      iconAtlas: FUEL_ICON, iconMapping: {fuel: {x: 0, y: 0, width: 64, height: 64}},
+      getIcon: () => 'fuel', getSize: 28, sizeUnits: 'pixels',
+    }),
+  ];
+}
+
 // --- Tooltips ---------------------------------------------------------------------------
 function tooltip({object, layer}) {
   if (!object) return null;
@@ -303,6 +327,11 @@ function tooltip({object, layer}) {
     return box(`<b>${object.type}</b> · <span style="color:${DATA.severity.colors[object.sev]}">${DATA.severity.labels[object.sev]}</span>`
       + `<br><span style="font-family:'JetBrains Mono'">${esc(object.label)}</span> · ${fmtTime(object.ts)}`
       + `<br>máx. ${object.speed.toFixed(0)} km/h en zona de ${object.limit} km/h`);
+  }
+  if (layer.id === 'fuel') {
+    return box(`<b>⛽ Combustible insuficiente</b> · <span style="color:${DATA.severity.colors[object.sev]}">${DATA.severity.labels[object.sev]}</span>`
+      + `<br><span style="font-family:'JetBrains Mono'">${esc(object.label)}</span> · ${fmtTime(object.ts)}`
+      + `<br>Tenía <b>${object.fuel} L</b> y necesitaba <b>${object.needed} L</b> para los ${object.remaining} km que faltaban`);
   }
   if (layer.id === 'hexagons') return box(`<b>${object.count}</b> episodios de infracción`);
   return null;
@@ -335,6 +364,10 @@ function renderLegend() {
       + `<div class="row"><span class="line" style="background:#3987e5"></span>Recorridos del periodo</div>`
       + `<div class="row"><span class="line" style="background:#78dcff;box-shadow:0 0 6px #78dcff"></span>Movimiento (animado)</div></section>`;
   }
+  if (show.fuel && DATA.fuel.length) {
+    html += `<section><h5>Combustible</h5><div class="row"><span style="width:18px;text-align:center">⛽</span>`
+      + `No alcanza para terminar la ruta (${DATA.fuel.length})</div></section>`;
+  }
   if (show.infractions) {
     html += `<section><h5>${mode === 'hexagon' ? 'Infracciones (hexágonos 3D)' : 'Densidad de infracciones'}</h5>`
       + `<div class="ramp" style="background:linear-gradient(90deg,${DATA.heatRamp.join(',')})"></div>`
@@ -351,6 +384,7 @@ function renderLayerPanel() {
     ['routes', route ? 'Ruta del vehículo' : 'Recorridos de la flota'],
     ['infractions', 'Infracciones'],
     ['alerts', 'Alertas que pulsan'],
+    ['fuel', '⛽ Combustible insuficiente'],
   ];
   document.getElementById('layers').innerHTML = '<h5>Capas</h5>'
     + items.map(([k, label]) => `<label><input type="checkbox" data-layer="${k}" ${show[k] ? 'checked' : ''}>${label}</label>`).join('')
@@ -373,6 +407,7 @@ function dataBounds() {
   if (route) pts.push(...route.trip.path);
   else if (fleet) fleet.vehicles.forEach(v => pts.push(...v.path));
   DATA.alerts.forEach(a => pts.push(a.p));
+  DATA.fuel.forEach(f => pts.push(f.p));
   if (!pts.length) DATA.geofences.forEach(f => f.geometry.coordinates.forEach(poly => pts.push(...poly[0])));
   if (!pts.length) return null;
   const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]);
@@ -406,7 +441,7 @@ function frame(now) {
   const t = ((now - started) % LOOP_MS) / LOOP_MS;
   // De abajo hacia arriba: fondo, geocercas, infracciones, etiquetas, recorridos y alertas.
   deckgl.setProps({layers: [basemap, ...geofenceLayers(), ...infractionLayers(), labels,
-                            ...fleetLayers(t), ...routeLayers(t), ...alertLayers(t)]});
+                            ...fleetLayers(t), ...routeLayers(t), ...alertLayers(t), ...fuelLayers()]});
   requestAnimationFrame(frame);
 }
 document.getElementById('title').innerHTML = `<span class="live"></span>${esc(DATA.title)}`;

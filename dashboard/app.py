@@ -10,8 +10,6 @@ recargar la página en cada clic; las capas del mapa se encienden dentro del map
 
 from __future__ import annotations
 
-from datetime import timedelta
-
 import streamlit as st
 import theme
 import tour
@@ -91,18 +89,39 @@ with st.sidebar:
         st.stop()
     directory = source.vehicles(role).rows
 
+    with st.container(key="tour-period"):
+        st.markdown("### Periodo")
+        # Fuera del formulario: al cambiar el modo, el selector de fecha cambia al instante.
+        period_mode = (
+            st.segmented_control(
+                "Modo de periodo",
+                ["Un día", "Varios días"],
+                default="Un día",
+                label_visibility="collapsed",
+            )
+            or "Un día"
+        )
+
     # Formulario: los cambios se aplican juntos con un solo clic (una sola recarga).
     with st.form("filters", border=False):
-        with st.container(key="tour-period"):
-            st.markdown("### Periodo")
-            period = st.date_input(
-                "Periodo",
-                value=(max(bounds["first"], bounds["last"] - timedelta(days=1)), bounds["last"]),
-                min_value=bounds["first"],
-                max_value=bounds["last"],
-                label_visibility="collapsed",
-                format="DD/MM/YYYY",
-            )
+        with st.container(key="tour-city"):
+            if period_mode == "Un día":
+                day = st.date_input(
+                    "Día",
+                    value=bounds["last"],
+                    min_value=bounds["first"],
+                    max_value=bounds["last"],
+                    format="DD/MM/YYYY",
+                )
+                period = (day, day)
+            else:
+                period = st.date_input(
+                    "Desde – hasta",
+                    value=(bounds["first"], bounds["last"]),
+                    min_value=bounds["first"],
+                    max_value=bounds["last"],
+                    format="DD/MM/YYYY",
+                )
             st.markdown("### Ciudad")
             regions = [region for label, region in CITIES.items() if st.checkbox(label, value=True)]
 
@@ -167,17 +186,17 @@ with st.container(key="tour-kpis"):
 
 if vehicle_key is not None:
     detail = ui.route_payload(
-        routes.rows, f"{labels[vehicle_key]} · {date_from:%d/%m}–{date_to:%d/%m}"
+        routes.rows,
+        f"{labels[vehicle_key]} · {date_from:%d/%m}"
+        + ("" if date_from == date_to else f"–{date_to:%d/%m}"),
+        alert_filter,
+        with_arrows=date_from == date_to,
     )
     fleet, subject = None, labels[vehicle_key]
 else:
     detail = None
     fleet = ui.fleet_payload(routes.rows, labels)
     subject = f"{len(vehicle_keys)} vehículos"
-    # Sugerencia una sola vez por sesión.
-    if not st.session_state.get("tip_shown"):
-        st.toast("Consejo: elige un vehículo en el panel para ver su ruta en detalle.", icon="💡")
-        st.session_state["tip_shown"] = True
 
 # Geocercas de las ciudades elegidas (con un vehículo elegido, todas: su ruta puede cruzarlas).
 shown_regions = set(regions) if vehicle_key is None else set(CITIES.values())
@@ -188,7 +207,9 @@ html = ui.map_html(
     route=detail,
     infractions=infractions.rows,
     alerts=alerts.rows[:40],
-    title=f"{subject} · {date_from:%d/%m} – {date_to:%d/%m}",
+    fuel=fuel.rows,
+    title=f"{subject} · {date_from:%d/%m}"
+    + ("" if date_from == date_to else f" – {date_to:%d/%m}"),
 )
 with st.container(key="tour-map"):
     # HTML propio (plantilla + datos de nuestra base serializados como JSON), nunca de usuarios.

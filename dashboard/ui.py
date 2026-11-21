@@ -18,6 +18,7 @@ import theme
 
 from fleet_pipeline.geo import geodesic_bearing_deg, geodesic_distance_m
 from fleet_pipeline.processing.rules import ScoreParams
+from fleet_pipeline.queries.dashboard import AlertFilter
 
 SEVERITY_WEIGHT = dict(ScoreParams().severity_points)
 
@@ -154,7 +155,24 @@ def _panel(title: str, subtitle: str, body: str) -> str:
 def alerts_panel(
     rows: list[dict[str, Any]], fuel_rows: list[dict[str, Any]], limit: int = 50
 ) -> str:
-    items = [
+    # Combustible primero: son pocas y críticas (un camión que no llega a destino); si se
+    # mezclaran por fecha con cientos de excesos quedarían fuera de las más recientes.
+    fuel_items = sorted(
+        (
+            (
+                r["started_at"],
+                r["label"],
+                "⛽ " + theme.ALERT_LABELS["LOW_FUEL_FOR_ROUTE"],
+                r["severity"],
+                f"{_fmt(r['fuel_l'])} de {_fmt(r['fuel_needed_l'])} L necesarios",
+                f"{_fmt(r['remaining_km'])} km restantes",
+            )
+            for r in fuel_rows
+        ),
+        key=lambda item: item[0],
+        reverse=True,
+    )
+    speed_items = [
         (
             r["started_at"],
             r["label"],
@@ -163,25 +181,18 @@ def alerts_panel(
             f"{_fmt(r['max_speed_kmh'])} / {r['limit_kmh']} km/h",
             r["geofence_code"] or "—",
         )
-        for r in rows
-    ] + [
-        (
-            r["started_at"],
-            r["label"],
-            theme.ALERT_LABELS["LOW_FUEL_FOR_ROUTE"],
-            r["severity"],
-            f"{_fmt(r['fuel_l'])} de {_fmt(r['fuel_needed_l'])} L",
-            f"{_fmt(r['remaining_km'])} km restantes",
-        )
-        for r in fuel_rows
+        for r in rows[:limit]
     ]
-    items.sort(key=lambda item: item[0], reverse=True)
-    title = f"Alertas recientes · las {min(len(items), limit)} más recientes"
-    subtitle = "Episodios de exceso, infracciones de geocerca y combustible insuficiente"
+    items = fuel_items + speed_items
+    title = (
+        f"Alertas · {len(fuel_items)} de combustible y {len(speed_items)} de velocidad "
+        "más recientes"
+    )
+    subtitle = "Combustible insuficiente arriba; después excesos e infracciones de geocerca"
     if not items:
         return _panel(title, subtitle, '<div class="empty">Sin alertas.</div>')
     rows_html = ""
-    for ts, label, kind, sev, detail, where in items[:limit]:
+    for ts, label, kind, sev, detail, where in items:
         pill = f'<span class="pill" style="--c:{theme.SEVERITY_COLORS[sev]}">'
         pill += f"{theme.SEVERITY_LABELS[sev]}</span>"
         rows_html += (
@@ -213,17 +224,31 @@ def timings(items: dict[str, float]) -> str:
 # --- Mapa ------------------------------------------------------------------------------
 
 
-def route_payload(rows: list[dict[str, Any]], label: str) -> dict[str, Any] | None:
-    """Segmentos coloreados por severidad + recorrido con tiempos relativos para animarlo."""
+def shown_severity(row: dict[str, Any], alert_filter: AlertFilter) -> str | None:
+    """Severidad con la que se pinta una lectura: solo si su infracción pasa los filtros de
+    tipo y severidad; si no, el tramo va en el color base ("dentro de lo filtrado")."""
+    if row["alert_type"] is None or row["severity"] not in alert_filter.severities:
+        return None
+    category = f"{row['alert_type']}:{row['zone_type'] or 'none'}"
+    return row["severity"] if category in alert_filter.categories else None
+
+
+def route_payload(
+    rows: list[dict[str, Any]], label: str, alert_filter: AlertFilter, with_arrows: bool
+) -> dict[str, Any] | None:
+    """Segmentos coloreados según los filtros + recorrido con tiempos relativos para animarlo.
+    Las flechas de sentido solo se dibujan para un día: con varios, las idas y vueltas de
+    distintos días se superponen y confunden."""
     if len(rows) < 2:
         return None
+    severities = [shown_severity(r, alert_filter) for r in rows]
     segments = []
-    for a, b in zip(rows, rows[1:], strict=False):
+    for (a, b), severity in zip(zip(rows, rows[1:], strict=False), severities[1:], strict=True):
         segments.append(
             {
                 "path": [[a["lon"], a["lat"]], [b["lon"], b["lat"]]],
-                "color": theme.SEVERITY_COLORS.get(b["severity"], theme.ACCENT),
-                "severity": b["severity"],
+                "color": theme.SEVERITY_COLORS.get(severity, theme.ACCENT),
+                "severity": severity,
                 "speed": float(b["speed_kmh"]),
                 "limit": b["speed_limit_kmh"],
                 "zone": b["zone_type"],
@@ -235,7 +260,8 @@ def route_payload(rows: list[dict[str, Any]], label: str) -> dict[str, Any] | No
         "path": [[r["lon"], r["lat"]] for r in rows],
         "timestamps": [(r["ts"] - t0).total_seconds() for r in rows],
     }
-    return {"segments": segments, "trip": trip, "arrows": _arrows(rows), "label": label}
+    arrows = _arrows(rows, severities) if with_arrows else []
+    return {"segments": segments, "trip": trip, "arrows": arrows, "label": label}
 
 
 ARROW_SPACING_M = 400.0
@@ -245,7 +271,7 @@ MIN_ARROW_STEP_M = 20.0  # bajo esta distancia el rumbo es ruido del GPS
 ARROW_CELL_DEG = 0.003  # ~330 m: una flecha por celda y por sentido
 
 
-def _arrows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _arrows(rows: list[dict[str, Any]], severities: list[str | None]) -> list[dict[str, Any]]:
     """Flechas cada ~400 m de recorrido, orientadas con el rumbo del tramo.
 
     Un vehículo repite su ruta de ida y vuelta varias veces al día: para que las flechas no se
@@ -253,7 +279,7 @@ def _arrows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """
     arrows: dict[tuple[int, int, int], dict[str, Any]] = {}
     travelled = 0.0
-    for a, b in zip(rows, rows[1:], strict=False):
+    for (a, b), severity in zip(zip(rows, rows[1:], strict=False), severities[1:], strict=True):
         step = geodesic_distance_m(a["lat"], a["lon"], b["lat"], b["lon"])
         travelled += step
         if travelled < ARROW_SPACING_M or step < MIN_ARROW_STEP_M:
@@ -269,7 +295,7 @@ def _arrows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
         arrows[cell] = {
             "p": [b["lon"], b["lat"]],
             "bearing": round(bearing),
-            "color": theme.SEVERITY_COLORS.get(b["severity"], theme.ACCENT),
+            "color": theme.SEVERITY_COLORS.get(severity, theme.ACCENT),
         }
     return list(arrows.values())
 
@@ -305,6 +331,7 @@ def map_html(
     route: dict[str, Any] | None,
     infractions: list[dict[str, Any]],
     alerts: list[dict[str, Any]],
+    fuel: list[dict[str, Any]],
     title: str,
 ) -> str:
     """HTML del mapa. `fleet` = toda la flota (vista general); `route` = un vehículo en detalle.
@@ -337,6 +364,19 @@ def map_html(
         "infractions": [
             {"p": [round(r["lon"], 5), round(r["lat"], 5)], "w": SEVERITY_WEIGHT[r["severity"]]}
             for r in infractions
+        ],
+        # Dónde empezó cada alerta de combustible insuficiente (camiones del corredor).
+        "fuel": [
+            {
+                "p": [f["lon"], f["lat"]],
+                "sev": f["severity"],
+                "label": f["label"],
+                "fuel": round(float(f["fuel_l"])),
+                "needed": round(float(f["fuel_needed_l"])),
+                "remaining": round(float(f["remaining_km"])),
+                "ts": f["started_at"].isoformat(),
+            }
+            for f in fuel
         ],
         "alerts": [
             {
