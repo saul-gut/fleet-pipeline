@@ -13,12 +13,14 @@ from fleet_pipeline.processing.rules import (
     alert_type_for,
     applied_zone,
     consumption_l_per_km,
+    driver_score,
     effective_step_m,
     fuel_needed_l,
     is_low_fuel,
     is_over_threshold,
     is_refuel,
     low_fuel_severity,
+    penalty_points,
     remaining_route_km,
     severity,
     speeding_episodes,
@@ -182,3 +184,40 @@ def test_low_fuel_severity_by_coverage(fuel_l: float, needed_l: float, expected:
 
 def test_enough_fuel_does_not_alert() -> None:
     assert not is_low_fuel(300.0, fuel_needed_l(remaining_km=450, consumption_l_km=0.35))
+
+
+# --- Driver Score (D-19) ----------------------------------------------------------------
+
+
+def test_penalty_points_weight_severity_and_geofence() -> None:
+    alerts = [
+        ("SPEEDING", "minor"),  # 1
+        ("SPEEDING", "severe"),  # 6
+        ("GEOFENCE_VIOLATION", "moderate"),  # 3 × 2 = 6
+        ("LOW_FUEL_FOR_ROUTE", "severe"),  # no cuenta
+    ]
+    assert penalty_points(alerts) == 13
+
+
+def test_clean_driver_scores_100() -> None:
+    assert driver_score(0, 420) == 100
+
+
+def test_score_uses_points_per_100_km() -> None:
+    """Las mismas alertas en el doble de km pesan la mitad."""
+    assert driver_score(100, 200) > driver_score(100, 100)
+
+
+def test_score_reference_values() -> None:
+    # 100 puntos por 100 km -> 100 × e^-0,5 = 60,65
+    assert driver_score(100, 100) == pytest.approx(60.653, abs=0.001)
+    # Vehículo agresivo real: 322,5 puntos por 100 km -> 19,9
+    assert driver_score(322.5, 100) == pytest.approx(19.94, abs=0.01)
+
+
+def test_score_never_reaches_zero_and_does_not_saturate() -> None:
+    assert 0 < driver_score(1000, 100) < driver_score(500, 100)
+
+
+def test_too_few_km_has_no_score() -> None:
+    assert driver_score(0, 4.9) is None

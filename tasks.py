@@ -54,19 +54,19 @@ def api() -> int:
 
 
 def seed() -> int:
-    """Carga geocercas y flota, simula 24 h y procesa Plata (requiere la API corriendo)."""
+    """Carga geocercas y flota, simula 24 h y procesa Plata y Oro (requiere la API corriendo)."""
     simulator = [sys.executable, "-m", "fleet_pipeline.simulator"]
     return run(
         [sys.executable, "-m", "fleet_pipeline.geofences", "load"],
         [*simulator, "register"],
         [*simulator, "run", "--backfill-hours", "24"],
-        [sys.executable, "-m", "fleet_pipeline.processing", "silver"],
+        [sys.executable, "-m", "fleet_pipeline.processing", "all"],
     )
 
 
 def process() -> int:
-    """Procesa lo nuevo de Bronce hacia Plata (geocercas, alertas, consumo)."""
-    return run([sys.executable, "-m", "fleet_pipeline.processing", "silver"])
+    """Procesa lo nuevo: Bronce -> Plata (geocercas, alertas) -> Oro (eventos, Driver Score)."""
+    return run([sys.executable, "-m", "fleet_pipeline.processing", "all"])
 
 
 def simulate() -> int:

@@ -1,4 +1,4 @@
-"""Reglas de negocio de la capa Plata (D-17), como funciones puras.
+"""Reglas de negocio de Plata (D-17) y del Driver Score de Oro (D-19), como funciones puras.
 
 Son la especificación ejecutable de las reglas: se prueban en milisegundos con casos borde,
 y `RuleParams` entrega los mismos umbrales a la función SQL `silver.process_new`, que las
@@ -7,8 +7,9 @@ aplica a escala dentro de PostGIS. Un test de integración verifica que ambas co
 
 from __future__ import annotations
 
-from collections.abc import Sequence
-from dataclasses import dataclass
+import math
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import StrEnum
 
@@ -180,3 +181,38 @@ def low_fuel_severity(
     if coverage < params.low_fuel_moderate_coverage:
         return Severity.MODERATE
     return Severity.MINOR
+
+
+# --- Driver Score (D-19) ----------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class ScoreParams:
+    severity_points: Mapping[str, float] = field(
+        default_factory=lambda: {"minor": 1.0, "moderate": 3.0, "severe": 6.0}
+    )
+    geofence_multiplier: float = 2.0
+    decay_per_point: float = 0.005
+    min_km: float = 5.0
+
+
+def penalty_points(alerts: Sequence[tuple[str, str]], params: ScoreParams = ScoreParams()) -> float:
+    """Suma de puntos de (tipo, severidad). El combustible no resta: es planeación, no
+    conducción."""
+    total = 0.0
+    for alert_type, level in alerts:
+        if alert_type == AlertType.LOW_FUEL_FOR_ROUTE:
+            continue
+        points = params.severity_points[level]
+        if alert_type == AlertType.GEOFENCE_VIOLATION:
+            points *= params.geofence_multiplier
+        total += points
+    return total
+
+
+def driver_score(points: float, km: float, params: ScoreParams = ScoreParams()) -> float | None:
+    """Puntaje de 0 a 100: 100 × e^(−k × puntos por 100 km). None si el día tiene muy pocos km."""
+    if km < params.min_km:
+        return None
+    points_per_100km = points / km * 100
+    return 100 * math.exp(-params.decay_per_point * points_per_100km)
