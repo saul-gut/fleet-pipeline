@@ -143,7 +143,7 @@ uv run python tasks.py seed
 3. Simula las **últimas 24 horas** de telemetría, enviada por lotes a la API: un reporte cada 10 s por vehículo, dentro del horario de operación de la flota (5:00–21:00, hora de Colombia).
 4. Procesa Bronce → Plata (geocercas, alertas de velocidad y combustible) → Oro (tabla consolidada y Driver Score).
 
-Al terminar, el log muestra cuántos paquetes se aceptaron, se rechazaron o se ignoraron por duplicados, y cuántas lecturas y alertas se procesaron.
+En un portátil tarda entre 4 y 10 minutos (medido), casi todo en enviar los 115 000 paquetes por la API. Al terminar, el log muestra cuántos paquetes se aceptaron, se rechazaron o se ignoraron por duplicados, y cuántas lecturas y alertas se procesaron.
 
 > Los datos simulados son relativos a la hora actual: la ingesta rechaza lecturas de más de 7 días o del futuro. Si vuelves al proyecto días después, ejecuta `seed` otra vez.
 
