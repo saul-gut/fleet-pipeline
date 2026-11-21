@@ -1,6 +1,35 @@
 # Fuentes de las geocercas
 
-Los archivos originales se guardan en `data/raw/` y no se suben al repositorio. Los GeoJSON de esta carpeta son derivados: están reproyectados a EPSG:4326 y simplificados con `scripts/prepare_geofences.py`.
+Los archivos originales se descargan con `scripts/download_sources.py` en `data/raw/`, que no se sube al repositorio. `geofences.geojson` es un derivado generado con `scripts/prepare_geofences.py`: reproyectado a EPSG:4326, simplificado a 5 m y con las operaciones métricas hechas en EPSG:9377.
+
+**Licencia del derivado:** las zonas escolares de Medellín derivan de datos CC BY-SA 4.0, así que se publican con la misma licencia. Las demás geocercas citan su fuente en el campo `source`.
+
+## Resumen de geocercas
+
+| Tipo | Código | Límite | Origen del límite | Fuente |
+|---|---|---|---|---|
+| Perímetro urbano | `BOG-URB`, `MED-URB` | 50 km/h | Ley 2251 de 2022 | Perímetros oficiales |
+| Zona escolar | `*-SCH-01..05` | 30 km/h | Ley 2251 de 2022 | DBSCAN sobre colegios + buffer de 100 m |
+| Hotspot de siniestralidad | `*-HR-01..05` | 40 km/h | Política de la flota | DBSCAN sobre siniestros + buffer de 50 m |
+| Autopista | `COR-HWY` | 90 km/h | Res. MinTransporte 25995 de 2023 | Ruta OSRM, buffer de 30 m |
+| Tramo crítico de Guarne | `COR-GUARNE` | 60 km/h | Política de la flota | ~17 km centrados en Guarne |
+| Vía deteriorada El Santuario–Caño Alegre | `COR-SANTUARIO` | 70 km/h | Política de la flota | 135 km por la ruta desde El Santuario hacia Bogotá |
+
+## Siniestros viales
+
+| Ciudad | Fuente | Filtro | Puntos | Parámetros DBSCAN |
+|---|---|---|---|---|
+| Bogotá | SIGAT, Secretaría Distrital de Movilidad (`Accidentalidad/AccidentalidadAnalisis`, capa MUERTO) | Años 2023–2026 | 2 341 | radio 250 m, mínimo 8 |
+| Medellín | Alcaldía de Medellín (`transporte/VM_Accidentes`) | Heridos, 2025 | 30 153, de los que se excluyen 913 (2 coordenadas con más de 150 registros: ubicaciones por defecto de la geocodificación, verificadas en mapa) | radio 75 m, mínimo 100 |
+
+Solo se descargan la geometría y el año (minimización de datos). Los hotspots no son comparables entre ciudades: Bogotá publica muertos y Medellín heridos. **Licencia de los siniestros de Bogotá: pendiente de verificar.** Solo se publican los polígonos derivados, nunca los registros.
+
+## Colegios
+
+| Ciudad | Fuente | Licencia | Puntos |
+|---|---|---|---|
+| Bogotá | Datos Abiertos Bogotá, "Colegios Bogotá D.C." v12.24 (recurso `b2e46196-f801-4324-8be3-9e7d54266876`) | CC BY 4.0 | 2 237 |
+| Medellín | GeoMedellín, sedes educativas (`educacion/VC_Sedes_Instituciones`, capa 0) | CC BY-SA 4.0 | 779 |
 
 ## Perímetro urbano de Bogotá D.C.
 

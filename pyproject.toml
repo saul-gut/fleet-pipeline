@@ -20,6 +20,9 @@ dev = [
     "pytest-cov>=5",
     "ruff>=0.6",
 ]
+prep = [
+    "geopandas>=1.2.0",
+]
 
 [build-system]
 requires = ["hatchling"]
